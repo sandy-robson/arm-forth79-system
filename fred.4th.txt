@@ -1,23 +1,0 @@
-( Fred - Forth Refresh-Editor ) hex
-." f/fred 1 " 
-: try ( -> )
-  ( up-0x41 down-0x42 left-0x44 right-0x43 )
-  begin  key dup 1B =
-    if  drop key 5B =
-      if  drop key dup 41 =
-        if  1B emit 5B emit emit
-        else  dup 42 =
-        if  1B emit 5B emit emit
-        else  dup 43 =
-        if  1B emit 5B emit emit
-        else  dup 44 =
-        if  1B emit 5B emit emit
-        else  drop
-        then then then then
-      then
-    else  dup ascii @ =
-      if  abort  else  emit  then
-    then
-  again ;
-." f/fred 2 " 
- endload
