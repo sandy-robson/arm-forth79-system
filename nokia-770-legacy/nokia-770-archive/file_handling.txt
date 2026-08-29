@@ -1,0 +1,645 @@
+EX4
+
+#include <gtk/gtk.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
+#include <glob.h>
+
+#include <hildon-widgets/hildon-banner.h>
+#include <hildon-widgets/gtk-infoprint.h>
+#include <gconf/gconf.h>
+#include <gconf/gconf-client.h>
+
+#define DBUS_API_SUBJECT_TO_CHANGE
+#include <dbus/dbus.h>
+#include <dbus/dbus-glib-lowlevel.h>
+#include <bttools-dbus.h>
+#include <bt-dbus.h>
+
+#include "settings.h"
+#include "gps-settings.h"
+#include "bt-plugin.h"
+
+#define BT_ADDR_LEN 6
+#define BT_ADDR_STRING_LEN BT_ADDR_LEN * 3 -1
+#define DELAYED_SCAN_START 4000
+#define RESCAN_START 60000
+#define PAIRING_TIMEOUT 600000
+
+#define BLUEZ_PINAGENT_PATH_NAME "/org/bluez/PinAgent"
+#define PIN_LENGTH 4
+
+#define DEVICE_IS_PERIPHERAL(cod) (((cod)[1] & 0x1F) == 0x05)
+
+#define LAYOUT_FILE_PREFIX "!layout: "
+
+...
+...
+
+static DBusConnection *dbus_connection = NULL;
+
+static struct _settings_dialog *settings_dialog = NULL;
+static struct _pin_dialog *pin_dialog = NULL;
+
+static void start_search(search_info **info);
+static gboolean delayed_search_start_cb(gpointer search_info);
+static void delayed_search_start(guint start_after, search_info **info);
+static GtkListStore* create_device_list_store(void);
+static GtkWidget* create_tree_view(GtkListStore * list);
+
+static gboolean save_settings(void);
+static gboolean get_settings(gchar ** btaddress,
+                             gchar ** btname,
+                             connection_mode * mode, gchar ** layoutfile);
+
+
+...
+...
+
+< type gchar ??? >
+
+
+static gchar *
+get_layout_file_description(const gchar * filename)
+{
+  FILE *f;
+  char buf[512];
+  gchar *description;
+
+  f = fopen(filename, "r");
+  if (f == NULL)
+  {
+    g_printerr("Unable to open file %s\n", filename);
+    return NULL;
+  }
+
+  fgets(buf, 512, f);
+  if (buf != NULL)
+  {
+    if (g_str_has_prefix(buf, LAYOUT_FILE_PREFIX))
+    {
+      description = g_strdup(&buf[strlen(LAYOUT_FILE_PREFIX)]);
+      g_strstrip(description);
+      return description;
+    }
+
+  }
+
+  return NULL;
+
+}
+
+======================================
+EX 3
+
+
+ #include <dirent.h>
+ #include <libosso.h>
+ 
++/* Application settings */
++#include <gconf/gconf-client.h>
++
+ #include <hildon-widgets/gtk-infoprint.h>
+ #include <hildon-status-bar-lib/hildon-status-bar-item.h>
+ #include <hildon-widgets/hildon-input-mode-hint.h>
++#include <hildon-widgets/hildon-note.h>
+ 
+ #define DBUS_API_SUBJECT_TO_CHANGE
+ #include <dbus/dbus.h>
+@@ -93,6 +97,7 @@
+     GtkWidget *menu_separator;
+     GtkWidget *menu_screenshot;
+     GtkWidget *menu_delayed_screenshot;
++    GtkWidget *menu_swap;
+     GtkWidget *menu_settings;
+     gboolean in_area;
+     gboolean on_border;
+@@ -111,16 +116,26 @@
+ static int width, height;
+ #define MAX_READ_CHARS 128
+ static char read_buffer[MAX_READ_CHARS];
++static char dummy[MAX_READ_CHARS];
++#define MAX_SWAPNAME 64
++static char activeswapname[MAX_SWAPNAME];
++static gint swapused=0;
++static char label[64+MAX_SWAPNAME];
+ #define MAX_SSHOT_NAME_LEN 64
+ #define SSHOT_DEFAULT_NAME "screenshot"
+ static gchar *sshotfilename = NULL;
++static gchar *swapname = NULL;
+
+...
+...
+
++static gboolean
++swapisactive(void)
++{ /* side-effect: update global var swapused, if swap is active */
++  FILE *fin;
++
++  swapused=0;
++  fin = fopen(SWAPFILE, "r");
++  if (fin == NULL) g_error("Can't open "SWAPFILE"\n");
++  if (! fgets(read_buffer, MAX_READ_CHARS, fin)) /* skip 1st line */
++    return FALSE;
++  while (fgets(read_buffer, MAX_READ_CHARS, fin) && swapname) {
++    if (read_buffer) {
++      sscanf(read_buffer, "%s %s %s %d", activeswapname, dummy, dummy, &swapused);
++      if (strncmp(activeswapname, swapname, MAX_SWAPNAME) == 0)
++        return TRUE;
++    }
++  }
++  return FALSE;
++}
+
+...
+
+
+     /*
+-     * If the SWAP is on and used, indicate that on top of the memory icon
++     * If the SWAP is on, indicate that on top of the memory icon
+      */
+-    fin = fopen(SWAPFILE, "r");
+-    if (fin != NULL)
++    if (swapisactive())
+     {
+-        /* Do this only if there is the file and it can be open */
+-        while (fgets(read_buffer, MAX_READ_CHARS, fin) != NULL)
+-        {
+-            char* pointer = NULL;
+-    
+-            pointer = strstr(read_buffer, "/media/mmc");
+-    
+-            if (pointer) pointer = strstr(read_buffer, "file");
+-            
+-            if (pointer)
+-            {
+-                /* This should be the line with our SWAP on MMC */
+-                sscanf(pointer + strlen("file"), "%d %d", &swap_total, &swap_used);
+-                if (swap_used > 0)
+-                {
+-                    /* We are using the SWAP, show it */
+-                    gdk_pixbuf_composite(info->pixbuf_swap_on, info->pixbuf_current, 20, 22, 20, 18, 20, 22, 1, 1, GDK_INTERP_NEAREST, 255);
+-                }
+-            }
+-        }
+-        fclose(fin);
++        /* We have the SWAP active and are using the SWAP, show it */
++        gdk_pixbuf_composite(info->pixbuf_swap_on, info->pixbuf_current, 
++			20, 22, 20, 18, 20, 22, 1, 1, GDK_INTERP_NEAREST, 255);
++
+     }
+ 
+======================================
+EX2
+
+#include "override.h"
+    
+#include <apti18n.h>
+#include <apt-pkg/strutl.h>
+#include <apt-pkg/error.h>
+
+#include <stdio.h>
+    
+#include "override.h"
+									/*}}}*/
+
+// Override::ReadOverride - Read the override file			/*{{{*/
+// ---------------------------------------------------------------------
+/* This parses the override file and reads it into the map */
+bool Override::ReadOverride(string File,bool Source)
+{
+   if (File.empty() == true)
+      return true;
+   
+   FILE *F = fopen(File.c_str(),"r");
+   if (F == 0)
+      return _error->Errno("fopen",_("Unable to open %s"),File.c_str());
+   
+   char Line[500];
+   unsigned long Counter = 0;
+   while (fgets(Line,sizeof(Line),F) != 0)
+   {
+      Counter++;
+      Item Itm;
+
+      // Silence 
+      for (char *I = Line; *I != 0; I++)
+	 if (*I == '#')
+	    *I = 0;
+
+      // Strip space leading up to the package name, skip blank lines
+      char *Pkg = Line;
+      for (; isspace(*Pkg) && *Pkg != 0;Pkg++);
+      if (Pkg == 0)
+	 continue;
+
+      // Find the package and zero..
+      char *Start = Pkg;
+      char *End = Pkg;
+      for (; isspace(*End) == 0 && *End != 0; End++);
+      if (*End == 0)
+      {
+	 _error->Warning(_("Malformed override %s line %lu #1"),File.c_str(),
+			 Counter);
+	 continue;
+      }      
+      *End = 0;
+
+      // Find the priority
+      if (Source == false)
+      {
+	 for (End++; isspace(*End) != 0 && *End != 0; End++);
+	 Start = End;
+	 for (; isspace(*End) == 0 && *End != 0; End++);
+	 if (*End == 0)
+	 {
+	    _error->Warning(_("Malformed override %s line %lu #2"),File.c_str(),
+			    Counter);
+	    continue;
+	 }
+	 *End = 0;
+	 Itm.Priority = Start;
+      }
+      
+      // Find the Section
+      for (End++; isspace(*End) != 0 && *End != 0; End++);
+      Start = End;
+      for (; isspace(*End) == 0 && *End != 0; End++);
+      if (*End == 0)
+      {
+	 _error->Warning(_("Malformed override %s line %lu #3"),File.c_str(),
+			 Counter);
+	 continue;
+      }      
+      *End = 0;
+      Itm.FieldOverride["Section"] = Start;
+
+      // Source override files only have the two columns
+      if (Source == true)
+      {
+	 Mapping[Pkg] = Itm;
+	 continue;
+      }
+      
+      // Find the =>
+      for (End++; isspace(*End) != 0 && *End != 0; End++);
+      if (*End != 0)
+      {
+	 Start = End;
+	 for (; *End != 0 && (End[0] != '=' || End[1] != '>'); End++);
+	 if (*End == 0 || strlen(End) < 4)
+	 {
+	    Itm.OldMaint = "*";
+	    Itm.NewMaint = _strstrip(Start);
+	 }
+	 else
+	 {
+	    *End = 0;
+	    Itm.OldMaint = _strstrip(Start);
+	    
+	    End += 3;
+	    Itm.NewMaint = _strstrip(End);
+	 }	 
+      }
+
+      Mapping[Pkg] = Itm;
+   }
+
+   if (ferror(F))
+      _error->Errno("fgets",_("Failed to read the override file %s"),File.c_str());
+   fclose(F);
+   return true;
+}
+									/*}}}*/
+// Override::ReadExtraOverride - Read the extra override file		/*{{{*/
+// ---------------------------------------------------------------------
+/* This parses the extra override file and reads it into the map */
+bool Override::ReadExtraOverride(string File,bool Source)
+{
+   if (File.empty() == true)
+      return true;
+   
+   FILE *F = fopen(File.c_str(),"r");
+   if (F == 0)
+      return _error->Errno("fopen",_("Unable to open %s"),File.c_str());
+  
+   char Line[500];
+   unsigned long Counter = 0;
+   while (fgets(Line,sizeof(Line),F) != 0)
+   {
+      Counter++;
+
+      // Silence 
+      for (char *I = Line; *I != 0; I++)
+	 if (*I == '#')
+	    *I = 0;
+
+      // Strip space leading up to the package name, skip blank lines
+      char *Pkg = Line;
+      for (; isspace(*Pkg) && *Pkg != 0;Pkg++);
+      if (Pkg == 0)
+	 continue;
+
+      // Find the package and zero..
+      char *End = Pkg;
+      for (; isspace(*End) == 0 && *End != 0; End++);
+      if (*End == 0)
+      {
+	 _error->Warning(_("Malformed override %s line %lu #1"),File.c_str(),
+			 Counter);
+	 continue;
+      }      
+      *End = 0;
+
+      // Find the field
+      for (End++; isspace(*End) != 0 && *End != 0; End++);
+      char *Field = End;
+      for (; isspace(*End) == 0 && *End != 0; End++);
+      if (*End == 0)
+      {
+	 _error->Warning(_("Malformed override %s line %lu #2"),File.c_str(),
+			 Counter);
+	 continue;
+      }
+      *End = 0;
+      
+      // Find the field value 
+      for (End++; isspace(*End) != 0 && *End != 0; End++);
+      char *Value = End;
+      for (; *End != 0; End++);
+      for (; isspace(*(End-1)) && End > Value; End--);
+      if (End == Value)
+      {
+	 _error->Warning(_("Malformed override %s line %lu #3"),File.c_str(),
+			 Counter);
+	 continue;
+      }      
+      *End = 0;
+
+      Mapping[Pkg].FieldOverride[Field] = Value;
+   }
+
+   if (ferror(F))
+      _error->Errno("fgets",_("Failed to read the override file %s"),File.c_str());
+   fclose(F);
+   return true;
+}
+									/*}}}*/
+
+// Override::GetItem - Get a architecture specific item 	/*{{{*/
+// ---------------------------------------------------------------------
+/* Returns a override item for the given package and the given architecture.
+ * Treats "all" special
+ */
+Override::Item* Override::GetItem(string Package, string Architecture)
+{
+   map<string,Item>::iterator I = Mapping.find(Package);
+   map<string,Item>::iterator J = Mapping.find(Package + "/" + Architecture);
+
+   if (I == Mapping.end() && J == Mapping.end())
+   {
+      return 0;
+   }
+
+   Item *result = new Item;
+   if (I == Mapping.end()) *result = J->second;
+   else
+   {
+      *result = I->second;
+      if (J != Mapping.end())
+      {
+	 Item *R = &J->second;
+	 if (R->Priority != "") result->Priority = R->Priority;
+	 if (R->OldMaint != "") result->OldMaint = R->OldMaint;
+	 if (R->NewMaint != "") result->NewMaint = R->NewMaint;
+	 for (map<string,string>::iterator foI = R->FieldOverride.begin();
+	      foI != R->FieldOverride.end(); foI++)
+         {
+	    result->FieldOverride[foI->first] = foI->second;
+	 }
+      } 
+   } 
+   return result;
+};
+
+
+// Override::Item::SwapMaint - Swap the maintainer field if necessary	/*{{{*/
+// ---------------------------------------------------------------------
+/* Returns the new maintainer string after evaluating the rewriting rule. If
+   there is a rule but it does not match then the empty string is returned,
+   also if there was no rewrite rule the empty string is returned. Failed
+   indicates if there was some kind of problem while rewriting. */
+string Override::Item::SwapMaint(string Orig,bool &Failed)
+{
+   Failed = false;
+   
+   // Degenerate case..
+   if (NewMaint.empty() == true)
+	 return OldMaint;
+   
+   if (OldMaint == "*")
+      return NewMaint;
+   
+   /* James: ancient, eliminate it, however it is still being used in the main
+      override file. Thus it persists.*/
+#if 1
+   // Break OldMaint up into little bits on double slash boundaries.
+   string::iterator End = OldMaint.begin();
+   while (1)
+   {
+      string::iterator Start = End;      
+      for (; End < OldMaint.end() &&
+	   (End + 3 >= OldMaint.end() || End[0] != ' ' || 
+	    End[1] != '/' || End[2] != '/'); End++);
+      if (stringcasecmp(Start,End,Orig.begin(),Orig.end()) == 0)
+	 return NewMaint;
+      
+      if (End >= OldMaint.end())
+	 break;
+
+      // Skip the divider and white space
+      for (; End < OldMaint.end() && (*End == '/' || *End == ' '); End++);
+   }
+#else
+   if (stringcasecmp(OldMaint.begin(),OldMaint.end(),Orig.begin(),Orig.end()) == 0)
+      return NewMaint;   
+#endif
+   
+   Failed = true;
+   return string();
+}
+			
+
+======================================
+EX 1
+
+021 #include <config.h>
+022 #include "gdk-pixbuf/gdk-pixbuf.h"
+023 #include "glib.h"
+024 #include <stdio.h>
+025 #include <stdlib.h>
+026 #include <time.h>
+027 #include <string.h>
+028 
+029 static void
+030 disaster (const char *what)
+031 {
+032   perror (what);
+033   exit (EXIT_FAILURE);
+034 }
+035 
+036 static void
+037 randomly_modify (const guchar *image, guint size)
+038 {
+039   int i;
+040 
+041   guchar *img_copy = g_malloc (size);
+042   g_memmove (img_copy, image, size);
+043   
+044   for (i = 0; i < size / 4; i++)
+045     {
+046       FILE *f;
+047       GdkPixbufLoader *loader;
+048       
+049       guint index = g_random_int_range (0, size);
+050       guchar byte = g_random_int_range (0, 256);
+051       
+052       img_copy[index] = byte;
+053       f = fopen ("pixbuf-randomly-modified-image", "w");
+054       if (!f)
+055         disaster ("fopen");
+056       fwrite (img_copy, size, 1, f);
+057       if (ferror (f))
+058         disaster ("fwrite");
+059       fclose (f);
+060 
+061       loader = gdk_pixbuf_loader_new ();
+062       gdk_pixbuf_loader_write (loader, img_copy, size, NULL);
+063       gdk_pixbuf_loader_close (loader, NULL);
+064       g_object_unref (loader);
+065     }
+066   g_free (img_copy);
+067 }
+068 
+069 static void
+070 write_seed (int seed)
+071 {
+072   FILE *f;
+073   /* write this so you can reproduce failed tests */
+074   f = fopen ("pixbuf-randomly-modified-seed", "w");
+075 
+076   if (!f)
+077     disaster ("fopen");
+078 
+079   if (fprintf (f, "%d\n", seed) < 0)
+080     disaster ("fprintf");
+081 
+082   if (fclose (f) < 0)
+083     disaster ("fclose");
+084 
+085   g_print ("seed: %d\n", seed);
+086 }
+087 
+088 static void
+089 usage (void)
+090 {
+091   g_print ("usage: pixbuf-randomly-modified [-s <seed>] <files> ... \n");
+092   exit (EXIT_FAILURE);
+093 }
+094 
+095 int
+096 main (int argc, char **argv)
+097 {
+098   int seed, i;
+099   gboolean got_seed = FALSE;
+100   GPtrArray *files = g_ptr_array_new ();
+101 
+102   if (argc == 1)
+103     usage ();
+104   
+105   seed = time (NULL);
+106 
+107   for (i = 1; i < argc; ++i)
+108     {
+109       if (strncmp (argv[i], "-s", 2) == 0)
+110         {
+111           if (strlen (argv[i]) > 2)
+112             usage();
+113           if (i+1 < argc)
+114             {
+115               seed = atoi (argv[i+1]);
+116               got_seed = TRUE;
+117               ++i;
+118             }
+119           else
+120             usage();
+121         }
+122       else
+123         g_ptr_array_add (files, strdup (argv[i]));
+124     }
+125 
+126   if (!got_seed)
+127     write_seed (seed);
+128 
+129   g_random_set_seed (seed);
+130 
+131   g_print ("the last tested image is saved to pixbuf-randomly-modified-image\n");
+132   
+133   g_type_init ();
+134   g_log_set_always_fatal (G_LOG_LEVEL_WARNING | G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL);
+135 
+136   for (;;)
+137     for (i = 0; i < files->len; ++i)
+138       {
+139         gchar *contents;
+140         gsize size;
+141         GError *err = NULL;
+142         
+143         fflush (stdout);
+144         if (!g_file_get_contents (files->pdata[i], &contents, &size, &err))
+145           {
+146             g_print ("%s: error: %s\n", (char *)files->pdata[i], err->message);
+147           }
+148         else
+149           {
+150             g_print ("%s\t\t", (char *)files->pdata[i]);
+151             randomly_modify (contents, size);
+152             g_print ("done\n");
+153             
+154             g_free (contents);
+155           }
+156       }
+157   
+158   return 0;
+159 }
+
+======================================
+EX0
+
+#include <stdio.h> 
+		#include <unistd.h> 
+		char *argh[] = { "/usr/games/wrapper/wrapper", 
+		 "usr/games/wrapper/games/game01.game", 
+		 NULL }; 
+		int main(int argc, char *argv[]) 
+		{ 
+		  FILE *pFile; 
+		  
+		  pFile = fopen ("/usr/games/.gamewrapper/game01.debug", "a"); 
+		  if (pFile) { 
+			fprintf (pFile, "app launched\n"); 
+			fclose (pFile); 
+		  } 
+		  if (execv ("/usr/games/wrapper/wrapper", argh) == ­1) { 
+			pFile = fopen ("/tmp/.gamewrapper/debug/game01.debug", "a"); 
+			if (pFile) { 
+			  fprintf (pFile, "cannot execute wrapper\n"); 
+			  fclose (pFile); 
+			} 
+		  } 
+		  return 0; 
+		} 
+
+======================================

@@ -1,0 +1,1463 @@
+tv definitions   DECIMAL                                        
+: headers ;                                                     
+                                                                
+FROM MONITOR.BLK 01 LOAD  ( Monitor m/code and words )          
+                                                                
+DECIMAL 02 16 HEX THRU    ( FORTH headerless m/code )           
+DECIMAL 98 99 HEX THRU    ( Forth 'Origin' table )              
+DECIMAL 17 36 HEX THRU    ( FORTH m/code )                      
+                                                                
+DECIMAL 37 93 HEX THRU    (( FORTH threaded words )             
+((                                                              
+forth DECIMAL tv                                                
+        94 95 hex THRU    (( Target Test words )                
+forth DECIMAL tv                                                
+        97 97 hex THRU    (( Setup parameter table )            
+
+here forth 0F + FFF0 AND  tv dp !!
+hcode (+loop)                                                   
+ r lda  rd phi  r lda  rd plo  irx  add  rd plo                 
+ s dec  ldx  80 ani  w phi  rd ghi  adc  rd phi                 
+ irx  r glo  ra plo  r ghi  ra phi                              
+ ra lda  rb phi  ra lda  rb plo  00 ldi  rc plo                 
+ rb glo  s str  rd glo  sm  rb ghi  s str  rd ghi  smb          
+ 80 ani  s str  0<>if,  rc inc  then,                           
+ rd ghi  xor  rb plo  rd ghi  s str  rb ghi  xor  s str         
+ rb glo  and  80 ani  irx                                       
+ 0<>if,  rc glo  01 xri  else,  rc glo  then,                   
+ 0<>if,  r dec  rd glo  r str  r dec  rd ghi  r str             
+  i lda  rb phi  i lda  i plo  rb ghi  i phi                    
+ else,  r inc  r inc  i inc  i inc                              
+ then,  next                                                    
+end-code                                                        
+
+hcode (/loop)                                                   
+ r lda  ra phi  r lda  ra plo  ra inc                           
+ r lda  rb phi  ra glo  s dec  s str                            
+ r ldn  sd  ra ghi  s str                                       
+ rb ghi  sdb  irx                                               
+ 0<if,  r dec  r dec                                            
+  ra glo  r str  r dec  ra ghi  r str                           
+  i lda  rb phi  i lda  i plo  rb ghi  i phi                    
+ else,  r inc  i inc  i inc                                     
+ then,  next                                                    
+end-code                                                        
+                                                                                                                                                                                                                                                               
+hcode (scheck)                                                  
+ 00 ldi  rc phi  ldx  80 ani                                    
+ 0<>if,  01 ldi  rc phi  irx                                    
+  00 ldi  sm  stxd  00 ldi  smb  s str                          
+ then,  s dec  rc ghi  s str  rb ghi  80 ani                    
+ 0<>if,  rb glo  00 sdi  rb plo  rb ghi  00 sdbi  rb phi  01 ldi
+ then,  xor  0<>if,  02 ldi  or  rc phi  then,  irx  pcr sep    
+end-code                                                        
+
+hcode (sjust)                                                   
+ s dec  rc ghi  s str  irx  01 ani                              
+ 0<>if,  irx  00 ldi  sm  stxd  00 ldi  smb  s str              
+ then,  s dec  02 ldi  and  irx                                 
+ 0<>if,  ra glo  00 sdi  ra plo  ra ghi  00 sdbi  ra phi        
+ then,  pcr sep                                                 
+end-code                                                        
+
+hcode (/mod)                                                    
+ ldxa  rb phi  ldxa  rb plo  01 ldi  rc plo  tv '' (scheck)     
+ forth DUP  tv asmac a.1 ldi  rf phi  a.0 ldi  rf plo  rf sep   
+ begin,  rb ghi  80 ani  0=while,                               
+  rb glo  shl  rb plo  rb ghi  shlc  rb phi  rc inc             
+ repeat,  00 ldi  ra phi  ra plo  irx                           
+ begin,  ra glo  shl  ra plo  ra ghi  shlc  ra phi              
+  rb glo  sd  stxd  rb ghi  sdb  s str  irx                     
+  0<if,  rb glo  add  stxd  rb ghi  adc  s str  irx             
+  else,  ra glo  01 ori  ra plo                                 
+  then, rb ghi shr rb phi  rb glo shrc rb plo  rc dec  rc glo   
+ 0=until,  s dec  tv '' (sjust) forth DUP  tv asmac             
+ a.1 ldi  rf phi  a.0 ldi  rf plo  rf sep                       
+ s dec  ra glo  stxd  ra ghi  s str  next                       
+end-code                                                        
+
+hcode (>r)                                                      
+ ldxa  ra phi  ldxa  r dec  r str  ra ghi  r dec  r str  next   
+end-code                                                        
+
+hcode (code->tc)                                                
+ w glo  s dec  stxd  w ghi  s str  w dec  w ldn  ra plo  w plo  
+ w inc  w inc  w inc  w inc                                     
+ i glo  r dec  r str  i ghi  r dec  r str                       
+ w glo  i plo  w ghi  i phi  next                               
+end-code  '' (code->tc) f' 'code->tc !!                                                                                     
+                                                                                                                                                                                                                                                                                                                                
+hcode (dlit)                                                    
+ i lda  w phi  i lda  w plo  i lda  ra phi  i lda  s dec        
+ stxd  ra ghi  stxd  w glo  stxd  w ghi  s str  next            
+end-code                                                        
+
+hcode (do)                                                      
+ ldxa  ra phi  ldxa  ra plo  ldxa  rb phi                       
+ ldxa  r dec  r str  rb ghi  r dec  r str                       
+ ra glo  r dec  r str  ra ghi  r dec  r str  next               
+end-code  '' (do) f' '(do) !!                                   
+
+hcode (docon)                                                   
+ w lda  ra phi  w lda  s dec  stxd  ra ghi  s str  next         
+end-code  '' (docon) f' 'docon !!                                                                                               
+                                                                                                                                
+hcode (dosys)                                                   
+ w lda  ra phi  w lda  s dec  s str                             
+ v glo  add  stxd  ra ghi  s str  v ghi  adc  s str  next       
+end-code  '' (dosys) f' 'dosys !!                               
+
+hcode (douse)                                                   
+ w lda  ra phi  w lda  s dec  s str                             
+ u glo  add  stxd  ra ghi  s str  u ghi  adc  s str  next       
+end-code  '' (douse) f' 'douse !!                               
+
+hcode (dovar)                                                    
+ w glo  s dec  stxd  w ghi  s str  next                          
+end-code  '' (dovar) f' 'dovar !!                                
+                                                                                                                                                                                                                                                                    
+hcode (match)    tv (( enter at [match]+1 )  asmac               
+ pcr sep  01 ldi  w plo  w ghi  rd plo                           
+ begin,  s str  ra glo  add  re plo  ra ghi  00 adci  re phi      
+  re ldn  7F ani  rd phi  rd glo  s str  rb glo  add  re plo      
+  rb ghi  00 adci  re phi  re ldn  s str  rd ghi  xor             
+  0<>if,  00 ldi  w plo  01 ldi  rd plo  then,  rd dec  rd glo    
+ 0=until,  tv '' (match)  asmac lbr                              
+end-code
+                                                         
+hcode (i)                                                        
+ r lda  ra phi  r ldn  r dec  s dec  stxd  ra ghi  s str  next   
+end-code
+                                                         
+hcode (i')                                                       
+ r inc  r inc  r lda  ra phi  r ldn  r dec  r dec  r dec        
+ s dec  stxd  ra ghi  s str  next                               
+end-code                                                        
+
+hcode (find)                                                    
+ tv '' (match) forth 1+ DUP  tv asmac  a.1 ldi  rf phi          
+ a.0 ldi  rf plo  ldxa  ra phi  ldxa  ra plo  ldxa  rb phi      
+ ldx  rb plo  00 ldi  w phi  w plo  stxd  w ghi  stxd           
+ begin,  ra ghi  s str  ra glo  or  0<>while,                   
+  ra ldn  3F ani  s str  rb ldn  xor                            
+  0=if,  1F ldi  and  w phi  rf sep  then,                      
+  ra ldn  1F ani  s str  ra glo  add  ra plo  ra ghi  s str     
+  00 ldi  adc  ra phi  ra inc  w glo                            
+  0<>if,  ra inc  ra inc  irx  irx                              
+   ra glo  stxd  ra ghi  stxd  00 ldi  ra phi  ra plo           
+  else,  ra lda  re phi  ra ldn  ra plo  re ghi  ra phi         
+  then,                                                         
+ repeat, irx  next                                              
+end-code                                                        
+
+hcode (j)                                                       
+ s dec  r glo  04 adi  ra plo  r ghi  00 adci  ra phi           
+ ra lda  rb phi  ra ldn  stxd  rb ghi  s str  next              
+end-code                                                        
+
+hcode (k)                                                       
+ s dec  r glo  08 adi  ra plo  r ghi  00 adci  ra phi           
+ ra lda  rb phi  ra ldn  stxd  rb ghi  s str  next              
+end-code                                                        
+
+hcode (leave)                                                   
+ r ghi  ra phi  r glo  ra plo  ra lda  rb phi  ra lda  rb plo   
+ rb inc  rb ghi  ra str  ra inc  rb glo  ra str  next           
+end-code                                                        
+                                                                                                                                                                                                
+hcode (loop)                                                    
+ r lda  rd phi  r lda  rd plo  rd inc  r glo  ra plo            
+ r ghi  ra phi  ra lda  rb phi  ra ldn  rb plo                  
+ 00 ldi  rc plo  s dec  rb glo  s str  rd glo  sm               
+ rb ghi  s str  rd ghi  smb                                     
+ 80 ani  s str  0<>if,  rc inc  then,                           
+ rd ghi  xor  rb plo  rd ghi  s str                             
+ rb ghi  xor  s str  rb glo  and                                
+ 80 ani  irx  0<>if,  rc glo  01 xri  else,  rc glo  then,      
+ 0<>if,  r dec  rd glo  r str  r dec  rd ghi  r str             
+  i lda  rb phi  i lda  i plo  rb ghi  i phi                    
+ else,  r inc  r inc  i inc  i inc                              
+ then, next                                                     
+end-code  '' (loop) f' '(loop) !!                               
+                                                                
+hcode (m/mod)                                                   
+ ldxa  rc phi  ldxa  rc plo  ldxa  re phi                       
+ ldxa  re plo  ldxa  rf phi  ldx  rf plo  01 ldi  w plo         
+ begin,  rc ghi  80 ani  0=while,                               
+  rc glo  shl  rc plo  rc ghi  shlc  rc phi  w inc              
+ repeat,  w glo  s str  10 adi  w plo                           
+ 00 ldi  rd phi  rd plo  ra phi  ra plo  rb phi  rb plo         
+ begin,  rb glo  shl  rb plo  rb ghi  shlc                      
+  rb phi  ra glo  shlc  ra plo  ra ghi  shlc                    
+  ra phi  rf glo  s str  rd glo  sd  rf plo                     
+  rf ghi  s str  rd ghi  sdb  rf phi                            
+  re glo  s str  rc glo  sdb  re plo                            
+  re ghi  s str  rc ghi  sdb  re phi                            
+  0<if,  rf glo  s str  rd glo  add  rf plo                     
+   rf ghi  s str  rd ghi  adc  rf phi                           
+   re glo  s str  rc glo  adc  re plo                           
+   re ghi  s str  rc ghi  adc  re phi                           
+  else,  rb glo  01 ori  rb plo                                 
+  then,                                                         
+  rc ghi  shr  rc phi  rc glo  shrc  rc plo                     
+  rd ghi  shrc  rd phi  rd glo  shrc  rd plo                    
+  w dec  w glo                                                  
+ 0=until,                                                       
+ rf glo  stxd  rf ghi  stxd                                     
+ rb glo  stxd  rb ghi  stxd                                     
+ ra glo  stxd  ra ghi  s str  next                              
+end-code                                                        
+                                                                
+hcode (pick)                                                    
+ s ghi  ra phi  s glo  ra plo  ldxa  rb phi                     
+ ldx  shl  s str  rb ghi  shlc  rb phi                          
+ ra glo  add  ra plo  rb ghi  s str                             
+ ra ghi  adc  ra phi  ra lda  s dec  s str                      
+ ra ldn  irx  stxd  next                                        
+end-code                                                        
+
+hcode (r>)                                                      
+ r lda  ra phi  r lda  s dec  stxd  ra ghi  s str  next         
+end-code                                                        
+
+hcode (r@)                                                      
+ r lda  ra phi  r ldn  r dec                                    
+ s dec  stxd  ra ghi  s str  next                               
+end-code                                                        
+                                                                
+hcode (rp!)                                                     
+  ldxa  r phi  ldxa  r plo  next                                
+end-code                                                        
+
+hcode (sp!)                                                     
+ ldxa  ra phi  ldx  s plo  ra ghi  s phi  next                  
+end-code                                                        
+                                                                
+code (?TERMINAL)                                                
+ 00 ldi                                                         
+ tv here 04  forth +  tv asmac bn2  01 ldi                      
+ s dec  stxd  00 ldi  s str  next                               
+end-code                                                        
+
+code 1+!                                                        
+ ldxa  ra phi  ldxa  ra plo  ra inc  ra ldn  01 adi  ra str     
+ ra dec  ra ldn  00 adci  ra str  next                          
+end-code                                                        
+
+code ?DUP                                                       
+ ldxa  ra phi  or                                               
+ 0<>if,  ldx  s dec  s dec  stxd  ra ghi  s str  next           
+ then,  s dec  next                                             
+end-code                                                        
+                                                                
+code 1-!                                                        
+ ldxa  ra phi  ldxa  ra plo  ra inc  ra ldn                     
+ 01 smi  ra str  ra dec  ra ldn  00 smbi  ra str  next          
+end-code                                                        
+
+code <CMOVE                                                     
+ ldxa  rc phi  ldxa  rc plo  irx  add  rb plo                   
+ rc ghi  s dec  adc  rb phi  irx  irx  irx                      
+ rc glo  add  ra plo  rc ghi  s dec  adc                        
+ ra phi  irx  ra dec  rb dec  rc ghi  80 ani                    
+ 0=if,                                                          
+  begin,  rc ghi  s str  rc glo  or  0<>while,                  
+   ra ldn  rb str  ra dec  rb dec  rc dec                       
+  repeat,                                                       
+ then,  irx  next                                               
+end-code                                                        
+
+code 2DROP                                                      
+ irx  irx  irx  irx  next                                       
+end-code                                                        
+
+code ABS                                                        
+ ldxa  80 ani                                                   
+ 0<>if,  00 smi  stxd  00 smbi  s str  next                     
+ then,  s dec  next                                             
+end-code                                                        
+
+code C+!                                                        
+ ldxa  ra phi  ldxa  ra plo  irx                                
+ ra ldn  add  ra str  irx  next                                 
+end-code                                                        
+                                                                
+code CMOVE                                                      
+ ldxa  rc phi  ldxa  rc plo  ldxa  rb phi  ldxa  rb plo         
+ ldxa  ra phi  ldx  ra plo  rc ghi  80 ani                      
+ 0=if,                                                          
+  begin,  rc ghi  s str  rc glo  or  0<>while,                  
+   ra lda  rb str  rb inc  rc dec                               
+  repeat,                                                       
+ then,  irx  next                                               
+end-code                                                        
+
+code D+                                                         
+ ldxa  rb phi  ldxa  rb plo  ldxa  rc phi  ldxa  rc plo         
+ irx  irx  irx  add  stxd  rc ghi  adc  stxd                    
+ rb glo  adc  stxd  rb ghi  adc  s str  next                    
+end-code                                                        
+                                                                
+code D<                                                         
+ 00 ldi  rc plo  ldxa  ra phi  ldxa  ra plo  ldxa  rd phi       
+ ldxa  irx  irx  irx  sd  s dec  rd ghi  sdb  s dec             
+ ra glo  sdb  s dec  ldx  rb phi  ra ghi  sdb  80 ani  rc phi   
+ 0<>if,  rc inc  then,  rc glo  irx  irx  irx  stxd             
+ 00 ldi  stxd  ra ghi  s str  rb ghi  xor  stxd                 
+ rc ghi  s str  rb ghi  xor  irx  and  80 ani  irx              
+ 0<>if,  irx  01 ldi  xor  stxd  then,  next                    
+end-code                                                        
+
+code DNEGATE                                                    
+ irx  irx  irx  00 ldi  sm stxd  00 ldi  smb  stxd              
+ 00 ldi  smb  stxd  00 ldi  smb  s str  next                    
+end-code                                                        
+
+hcode DIGIT                                                     
+ irx  ldxa  rb plo  irx  30 ldi  sd  s str  09 sdi              
+ 0<if,  07 ldi  sd  s str  then,                                
+ 00 ldi  w plo  rb glo  sd                                      
+ 0<if,  s dec  00 ldi  stxd  01 ldi  w plo  then,               
+ w glo  stxd  00 ldi  s str  next                               
+end-code                                                        
+
+hcode ENCLOSE                                                   
+ 00 ldi  rd plo  irx  ldxa  w plo  01 ldi  w phi  ldxa          
+ rb phi  ldx  rb plo  s dec  rd glo  ra phi  ra plo             
+ begin,  s dec  rb glo  s str  ra glo  add  rc plo              
+  rb ghi  s str  ra ghi  adc  rc phi  irx  rc ldn  rd phi       
+  s dec  s str  w glo  xor  irx                                 
+  0=if,  rd glo                                                 
+   0<>if,  s dec  ra glo  stxd  ra ghi  s str  rd ghi           
+    0<>if,  ra inc  then,                                       
+    s dec  ra glo  stxd  ra ghi  s str  00 ldi  w phi           
+   then,                                                        
+  else,  rd glo                                                 
+   0=if,  s dec  ra glo  stxd  ra ghi  s str  rd inc            
+   else,  rd ghi                                                
+     0=if,  s dec  ra glo  stxd  ra ghi  stxd  ra glo           
+      stxd  ra ghi  s str  00 ldi  w phi                        
+    then,                                                       
+   then,                                                        
+  then,  ra inc  w ghi                                          
+ 0=until,  next                                                 
+end-code                                                        
+
+code FILL                                                       
+ irx  ldxa  rb plo  ldxa  rc phi  ldxa  rc plo                  
+ ldxa  ra phi  ldxa  ra plo  rc ghi  80 ani                     
+ 0=if,  s dec                                                   
+  begin,  rc ghi  s str  rc glo  or  0<>while,                  
+   rb glo  ra str  ra inc  rc dec                               
+  repeat,  irx                                                  
+ then,  next                                                    
+end-code                                                        
+
+code MAX                                                        
+ 00 ldi  rc plo  ldxa  ra phi  ldxa  ra plo  irx                
+ sd  s dec  s ldn  rb phi  ra ghi  sdb  80 ani  rc phi          
+ 0<>if,  rc inc  then,  s dec  ra ghi  s str  rb ghi            
+ xor  stxd  rc ghi  s str  rb ghi  xor  irx  and  80 ani        
+ 0<>if,  rc glo  01 xri  rc plo  then,  irx  rc glo             
+ 0<>if,  ra ghi  s str  irx  ra glo  stxd  then,  next          
+end-code                                                        
+
+code OR                                                         
+ ldxa  ra phi  ldxa  irx  or  stxd  ra ghi  or  s str  next     
+end-code                                                        
+
+code MIN                                                        
+ 00 ldi  rc plo  ldxa  ra phi  ldxa  ra plo  irx                
+ sm  s dec  s ldn  rb phi  ra ghi  smb  80 ani  rc phi          
+ 0<>if,  rc inc  then,  s dec  ra ghi  s str  rb ghi            
+ xor  stxd  rc ghi  s str  ra ghi  xor  irx  and  80 ani        
+ 0<>if,  rc glo  01 xri  rc plo  then,  irx  rc glo             
+ 0<>if,  ra ghi  s str  irx  ra glo  stxd  then,  next          
+end-code                                                        
+
+code MOVE                                                       
+ ldxa  rc phi  ldxa  shl  rc plo  rc ghi  shlc  rc phi          
+ ldxa  rb phi  ldxa  ra plo  ldxa  ra phi  ldx  ra plo          
+ rc ghi  80 ani                                                 
+ 0=if,                                                          
+  begin,  rc ghi  s str  rc glo  or  0<>while,                  
+   ra lda  rb str  rb inc  rc dec                               
+  repeat,                                                       
+ then,  irx  next                                               
+end-code                                                        
+
+code SP@                                                        
+ s ghi  ra phi  s glo  s dec  stxd  ra ghi  s str  next         
+end-code                                                        
+
+code U*                                                         
+ ldxa  rb phi  ldxa  rb plo  00 ldi  ra phi  ra plo             
+ rc phi  rc plo  10 ldi  w plo                                  
+ begin,  rc glo  shl  rc plo  rc ghi  shlc  rc phi              
+  ra glo  shlc  ra plo  ra ghi  shlc  ra phi                    
+  rb glo  shl  rb plo  rb ghi  shlc  rb phi                     
+  0>=if,  rc glo  irx  add  rc plo  rc ghi  s dec  adc  rc phi  
+   ra glo  00 adci  ra plo  ra ghi  00 adci  ra phi             
+  then,  w dec  w glo                                           
+ 0=until,  irx  rc glo  stxd  rc ghi  stxd                      
+ ra glo  stxd  ra ghi  s str  next                              
+end-code                                                        
+
+code U<                                                         
+ 00 ldi  rc plo  ldxa  ra phi  ldxa  ra plo                     
+ irx  sd  s dec  ra ghi  sdb                                    
+ 0<if,  01 ldi  rc plo  then,                                   
+ irx  rc glo  stxd  00 ldi  s str  next                         
+end-code                                                        
+
+code XOR                                                        
+  ldxa  ra phi  ldxa  irx  xor  stxd  ra ghi  xor  s str  next  
+end-code                                                        
+
+code !                                                          
+ ldxa  ra phi  ldxa  ra plo  ldxa  ra str                       
+ ra inc  ldxa  ra str  next                                     
+end-code                                                        
+
+code *                                                          
+ ldxa  rb phi  ldxa  rb plo                                     
+ 00 ldi  ra phi  ra plo  10 ldi  rc plo                         
+ begin,  ra glo  shl  ra plo  ra ghi  shlc ra phi               
+  rb glo  shl  rb plo  rb ghi  shlc  rb phi                     
+  0>=if,  ra glo  irx  add  ra plo  ra ghi  s dec  adc  ra phi  
+  then,  rc dec  rc glo                                         
+ 0=until,  irx  ra glo  stxd  ra ghi  s str  next               
+end-code                                                       
+
+code +!                                                    
+ ldxa  ra phi  ldxa  ra plo  ra inc  ra ldn  irx  add  ra str   
+ ra dec  ra ldn  s dec  adc  ra str  irx  irx  next      
+end-code                                                
+
+code 0<                                                        
+ ldxa  80 ani                                                   
+ 0<>if,  01 ldi  then,  stxd  00 ldi  s str  next               
+end-code                                                        
+                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+code 0=                                                         
+ ldxa  or                                                       
+ 0<>if,  00 ldi  else,  01 ldi  then,                           
+ stxd  00 ldi  s str  next                                      
+end-code                                                        
+
+code 0>                                                         
+ ldxa  ra phi  or                                               
+ 0<>if,  ra ghi  80 ani                                         
+  0<>if,  00 ldi  else,  01 ldi  then,                          
+ then,  stxd  00 ldi  s str  next                               
+end-code                                                        
+
+code 1+                                                         
+ irx  01 ldi  add  stxd  00 ldi  adc  s str  next               
+end-code                                                        
+                                                                
+code 1-                                                         
+ irx  ldx  01 smi  stxd  ldx  00 smbi  s str  next              
+end-code                                                        
+
+code 2+                                                         
+ irx  ldx  02 adi  stxd  ldx  00 adci  s str  next              
+end-code                                                        
+
+code 2-                                                         
+ irx  ldx  02 smi  stxd  ldx  00 smbi  s str  next              
+end-code                                                        
+
+code 2/                                                         
+ ldx  shl  0>=if,  01 ori  then,  shrc  s str  irx              
+ ldx  shrc  stxd  next                                          
+end-code                                                        
+
+code <                                                          
+ 00 ldi  rc plo  ldxa  ra phi  ldxa                             
+ irx  sd  s dec  s ldn  rb phi  ra ghi  sdb  80 ani  rc phi     
+ 0<>if,  rc inc  then,  rc glo  irx  stxd  00 ldi  stxd         
+ ra ghi  s str  rb ghi  xor  stxd  rc ghi  s str                
+ rb ghi  xor  irx  and  80 ani  irx                             
+ 0<>if,  irx  01 ldi  xor  stxd  then,  next                    
+end-code                                                        
+
+code @                                                          
+ ldxa  ra phi  ldx  ra plo                                      
+ ra lda  rb phi  ra ldn  stxd  rb ghi  s str  next              
+end-code                                                        
+
+code NEGATE                                                     
+ ldxa  ra phi  ldx  00 sdi  stxd  ra ghi  00 sdbi  s str  next  
+end-code                                                        
+
+code OVER                                                       
+ irx  irx  ldxa  ra phi  ldx                                    
+ s dec  s dec  s dec  s dec  stxd  ra ghi  s str  next          
+end-code                                                        
+
+code SEROUT   ( 9600 bd / 2.5 MHz )                             
+ 03 ldi  rd plo  ldxa  ldxa  rb plo                             
+ req  nop  rd glo  begin,  01 smi  0=until,                     
+ 08 ldi  rc plo  nop                                            
+ begin,  rb glo  shr  rb plo                                    
+  0<if,  req  else,  seq  nop  then,                            
+  rd glo  begin,  01 smi  0=until,  rc dec  rc glo              
+ 0=until,                                                       
+ nop  nop  nop                                                  
+ seq  nop  rd glo  begin,  01 smi  0=until,                     
+ nop  nop  nop  nop  nop                                        
+ seq  nop  rd glo  begin,  01 smi  0=until,                     
+ nop  nop  nop  nop  next                                       
+end-code                                                        
+
+     00      user OPERATOR     (( 02      user Tasking 2 cells) 
+     06      user S0              08      user R0               
+     0A      user TIB             0C      user WIDTH            
+     0E      user WARNING         10      user FENCE            
+(( DEVICE uses two cells )                                      
+     12      user DEVICE          16    system >IN              
+     18    system FLD             1A    system DPL              
+     1C    system DCOLS           1E    system HLD              
+     20    system NXT             22    system OUT              
+     24    system STATE           26    system BASE             
+     28    system OFFSET          2A    system R#               
+     2C    system SCR             2E    system BLK              
+     30    system DP              32    system CSP              
+     34    system CONTEXT         36    system CURRENT          
+                                                                
+     40   hsystem 'MESSAGE        42   hsystem 'ERROR           
+     44   hsystem 'CR             46   hsystem 'PAGE            
+     48   hsystem 'R/W            4A   hsystem 'ABORT           
+     4C   hsystem 'QUIT           4E   hsystem 'COLD            
+     50   hsystem 'EMIT           52   hsystem FPOINT           
+     54   hsystem APOINT          56   hsystem EPOINT           
+                                                                
+     58 hconstant NVARS                                         
+
+     38    system PREV            3A    system USE              
+     58   hsystem 'FIRST          5A   hsystem 'LIMIT           
+     3C   hsystem 'GET            3E   hsystem 'RELEASE         
+
+      0  constant 0               01  constant 1                
+     00  constant FALSE         FFFF  constant TRUE             
+     20  constant BL              1B  constant ESC              
+     0D  constant C/R                                           
+                                                                
+ nwidth hconstant NWIDTH          02 hconstant NBUFRS           
+ origin hconstant ORIGIN        8000 hconstant SBIT             
+     10 hconstant L/S             40 hconstant C/L              
+    400 hconstant B/BUF           C0 hconstant BRANCH-CODE      
+  r-org hconstant LOMEM        himem hconstant HIMEM            
+     08 hconstant BS              0A hconstant L/F              
+
+:: ALLOT                                                        
+   DP +! ;;                                                     
+
+:: HERE                                                         
+   DP @ ;;                                                      
+
+:: ,                                                            
+   HERE !  02 ALLOT ;;                                          
+
+h: +ORIGIN                                                      
+   ORIGIN + ;;                                                  
+
+h: RUBOUT                                                       
+   0E +ORIGIN @ ;;                                              
+
+:: ERROR                                                  
+   'ERROR @ EXECUTE ;;                                   
+
+:: ?ERROR                                               
+   SWAP if  ERROR  else  DROP  then ;;                          
+
+h: ?COMP                                                          
+   STATE @ 0= 11 ?ERROR ;;                                      
+
+:: COMPILE                                                      
+   ?COMP (r>) DUP 2+ (>r) @ , ;;                                
+
+:: >R                                                           
+   COMPILE (>r) ;;  immediate                                   
+
+:: R>                                                           
+   COMPILE (r>) ;;  immediate                                   
+
+:: (COLD)                                                       
+   'COLD @ EXECUTE ;;                                           
+
+:: R@                                                           
+   COMPILE (r@) ;;  immediate                                   
+
+:: LEAVE                                                        
+   COMPILE (leave) ;;  immediate                                
+
+:: EMIT                                                         
+   DEVICE    @ EXECUTE ;;                                       
+
+:: KEY                                                          
+   DEVICE 2+ @ EXECUTE ;;                                       
+
+:: FIRST                                                        
+   'FIRST @ ;;                                                  
+
+:: LIMIT                                                        
+   'LIMIT @ ;;                                                  
+
+:: R/W                                                          
+   'R/W      @ EXECUTE ;;                                       
+
+:: CR                                                           
+   'CR      @ EXECUTE ;;                                        
+
+:: (ABORT)                                                      
+   'ABORT   @ EXECUTE ;;                                        
+
+:: PAGE                                                         
+   'PAGE    @ EXECUTE ;;                                        
+
+:: MESSAGE                                                      
+   'MESSAGE @ EXECUTE ;;                                        
+
+:: (GET)      DROP ;;                                           
+
+:: (RELEASE)  DROP ;;                                           
+
+:: GET                                                          
+   'GET     @ EXECUTE ;;                                        
+
+:: RELEASE                                                      
+   'RELEASE @ EXECUTE ;;                                        
+
+:: CFA      2- ;;                                               
+
+:: PRINT    '' SEROUT CFA DEVICE ! ;;                           
+
+:: OK          'EMIT    @ DEVICE ! ;;                           
+
+h: ?DELIM                                                       
+   HERE DUP C@ + 1+ C@ - 1B ?ERROR ;;                           
+
+h: (QUIT)   'QUIT @ EXECUTE ;;                                  
+
+:: IEMIT                                                        
+   DUP 07 =                                                     
+   if    DROP                                                   
+   else  DUP BS =                                               
+    if    -1 3FFF C+!  5F20 3FFF C@ FF20 + !  DROP              
+    else  (EMIT)                                                
+    then                                                        
+   then ;;                                                      
+
+:: TYPE                                                         
+   0 MAX ?DUP                                                   
+   if  OVER + SWAP                                              
+    do  (i) C@  7F AND EMIT  loop                               
+   else  DROP                                                   
+   then ;;                                                      
+
+:: COUNT                                                        
+   DUP 1+ SWAP C@ ;;                                            
+
+:: LATEST                                                       
+   CURRENT @ @ ;;                                               
+
+:: PFA                                                          
+   DUP C@ NWIDTH AND + 5 + ;;                                   
+
+h: COMCODE                                                      
+   (r>) @ 2+ LATEST PFA CFA ! ;;                                
+'' COMCODE f' 'comcode !!                                       
+
+:: WITHIN                                                       
+   (>r) 1- OVER < SWAP (r>) < AND ;;                            
+
+:: SPACE                                                        
+   BL EMIT ;;                                                   
+
+h: (.")                                                         
+   (r@) COUNT DUP 1+ (r>) + (>r) TYPE ;;                        
+'' (.") f' '(.") !!                                             
+
+:: +BUF                                                         
+   B/BUF 2+ 2+  +  DUP LIMIT U< NOT                             
+   if  DROP FIRST  then  DUP PREV @ - ;;                        
+
+:: FORTH                                                        
+   FPOINT CONTEXT ! ;;  immediate                               
+
+h: (CR)                                                         
+   C/R EMIT  L/F EMIT ;;                                        
+
+:: CONVERT                                                      
+   begin  1+ DUP (>r) C@ BASE @ DIGIT  while                    
+    SWAP BASE @ U* DROP ROT BASE @ U*                           
+    D+ DPL @ 1+ if  DPL 1+!  then (r>)                          
+   repeat  (r>) ;;                                              
+
+:: FIRST                                                        
+   HIMEM B/BUF 2+ 2+ NBUFRS * - ;;                              
+
+:: BLANKS                                                       
+   BL FILL ;;                                                   
+
+:: BUFFER                                                       
+   USE @ DUP (>r)                                               
+   begin  +BUF  until  USE !  (r@) @ 0<                         
+   if  (r@) 2+ (r@) @ ABS 0 R/W  then                           
+   (r@) !  (r@) PREV !  (r>) 2+ ;;                              
+
+:: BLOCK                                                        
+   OFFSET @ + (>r)                                              
+   PREV @ DUP @ ABS (r@) -                                      
+   if                                                           
+    begin  +BUF 0=                                              
+     if  DROP (r@) BUFFER  DUP  0 OVER 2- !                     
+      (r@) 1 R/W 2- (r@) OVER !                                 
+     then  DUP @ ABS (r@) - 0=                                  
+    until  DUP PREV !                                           
+   then  (r>) DROP 2+  0 OVER B/BUF + ! ;;                      
+
+:: BUFFER                                                       
+   1 MAX  NBUFRS MIN  DUP SCR !                                 
+   1- B/BUF 2+ 2+ * FIRST + ;;                                  
+
+:: BLOCK  BUFFER ;;                                             
+
+:: WORD                                                         
+   BLK @ ?DUP                                                   
+   if  (( DISK GET)  BLOCK  else  TIB @  then  >IN @ + SWAP     
+   ENCLOSE >IN +!  OVER - (>r)  (r@) HERE C!                    
+   + HERE 1+ (r>) 1+ CMOVE  (( DISK RELEASE)  HERE ;;           
+
+h: ?EXEC                                                        
+   STATE @ 12 ?ERROR ;;                                         
+
+h: TOGGLE                                                       
+   OVER C@ XOR SWAP C! ;;                                       
+
+:: EXPECT                                                       
+   ?DUP                                                         
+   if  OVER + OVER                                              
+    do  KEY DUP RUBOUT =                                        
+     if  DROP DUP (i) = NOT                                     
+      if  BS DUP EMIT SPACE 0  else  7 (( Bell ) 1  then        
+      (r>) 2- + (>r)                                            
+     else  DUP C/R = if  (leave) DROP BL 0  else  DUP  then     
+      (i) C!  0 (i) 1+ !                                        
+     then  EMIT                                                 
+    loop                                                        
+   else  DROP                                                   
+   then  DROP ;;                                                
+
+h: ?STACK                                                       
+   S0 @ SP@ 2+ U< 1 ?ERROR  SP@ HERE 80 + U< 7 ?ERROR ;;        
+
+:: LITERAL                                                      
+   COMPILE LIT , ;;  immediate                                  
+
+:: DLITERAL                                                     
+   COMPILE (dlit) , , ;;  immediate                             
+
+:: FIND                                                         
+   BL WORD CONTEXT @ @ (find) DUP 0=                            
+   if  CONTEXT @ CURRENT @ -                                    
+    if  DROP HERE LATEST (find)  then                           
+   then ;;                                                      
+
+h: SP!   S0 @ (sp!) ;;                                          
+
+:: (R/W)                                                        
+   DROP 2DROP 1 8 ?ERROR ;;                                     
+
+:: ERASE   0 FILL ;;                                            
+
+:: NUMBER                                                       
+   0 0 ROT DUP 1+ C@                                            
+   ascii - = DUP (>r) + -01                                     
+   begin  DPL ! CONVERT DUP C@ BL OVER - AND  while             
+    DUP C@ DUP ascii : = SWAP                                   
+    ascii , ascii 0 WITHIN (( ,-./ ) + NOT 0 ?ERROR 0           
+   repeat  DROP (r>)                                            
+   if  DNEGATE  then ;;                                         
+
+h: QUERY                                                        
+   TIB @ 50 EXPECT 0 >IN ! ;;                                   
+
+:: [                                                            
+   ?COMP  0 STATE !  ;;  immediate                              
+
+:: NFA                                                          
+   5 -                                                          
+   begin  1- 7F OVER C@ <  until ;;                             
+
+:: DEFINITIONS                                                  
+   CONTEXT @ CURRENT ! ;;                                       
+
+h: INTERPRET                                                    
+   begin  FIND ?DUP                                             
+    if  DUP 2+ NFA C@ STATE @ <                                 
+     if  ,  else  EXECUTE ?STACK  then                          
+    else  HERE NUMBER DPL @ 1+ STATE @                          
+     if                                                         
+      if  [compile] DLITERAL  else  DROP [compile] LITERAL then 
+     else  0= if  DROP  then                                    
+     then                                                       
+    then  0                                                     
+   until ;;                                                     
+
+:: DECIMAL    0A BASE ! ;;                                      
+
+:: HEX        10 BASE ! ;;                                      
+
+:: BELL    07 EMIT ;;                                           
+
+:: (ERROR)                                                      
+   WARNING @ 0< if  (ABORT)  then  BELL                         
+   DUP 7 =  S0 @ HERE 28 + U< AND                               
+   if  DROP CR 02 MESSAGE .." ANY KEY COLD STARTS"              
+    KEY (COLD)                                                  
+   then  HERE COUNT TYPE .."  ? "  MESSAGE SPACE                
+   SP!  0 S0 @ !  BLK @ ?DUP                                    
+   if  SCR !  >IN @ R# !  then  (QUIT) ;;                       
+
+h: RP!                                                          
+   (r>) R0 @ (rp!) (>r) ;;                                      
+
+:: QUIT                                                         
+   0 BLK !  0 STATE !                                          
+    begin  RP!  CR                                             
+     QUERY INTERPRET STATE @ 0= if  .."  OK"  then  0           
+    until ;;                                                    
+
+:: ABORT                                                        
+   SP!  0 S0 @ !  DECIMAL  CR                                   
+   .." FORTH"                                                   
+   [compile] FORTH DEFINITIONS  QUIT ;;                         
+
+h: VEC-LIST                                                     
+(( (MESSAGE) DROP     (ERROR)          (CR)                     
+   (PAGE)             (R/W)            ABORT ;;                 
+
+h: SET-VARS                                                     
+   OPERATOR NVARS 0 FILL     10 +ORIGIN  OPERATOR 4 + 0E CMOVE  
+   04 DCOLS !                '' VEC-LIST 'MESSAGE     0C CMOVE  
+   '' QUIT   CFA 'QUIT  !    '' (KEY)     CFA DEVICE 2+ !       
+   0C +ORIGIN  @ FPOINT !    1E +ORIGIN     @ 'COLD     !       
+   20 +ORIGIN  @ 'EMIT  !    22 +ORIGIN     @ EPOINT    !       
+   OK  1 SCR ! ;;                                               
+
+:: COLD                                                         
+   SET-VARS  LOMEM DP !  0 , 8 , 0 , 462D , 3739 ,              
+   LOMEM  DUP 2+ DUP @ CXSUM SWAP !  PAGE ABORT ;;              
+
+:: EMPTY-BUFFERS                                                
+   FIRST LIMIT OVER - ERASE ;;                                  
+
+:: CREATE                                                       
+   FIND                                                         
+   if  HERE @ 1 = 1B ?ERROR  SPACE HERE COUNT TYPE 4 MESSAGE    
+   then  HERE DUP C@ NWIDTH MIN DUP (>r)  1+ ALLOT  (r>)        
+   80 + OVER C!  HERE 1- 80 TOGGLE  LATEST ,  CURRENT @ !  0 ,  
+   does-code> (dovar) ;;                                        
+
+h: ?CSP                                                         
+   SP@ CSP @ - 14 ?ERROR ;;                                     
+
+h: !CSP                                                         
+   SP@ CSP ! ;;                                                 
+
+:: SMUDGE                                                       
+   LATEST 20 TOGGLE ;;                                          
+
+h: (;CODE)                                                      
+   (r>) LATEST PFA CFA ! ;;  '' (;CODE) f' '(;code) !!          
+
+:: ]   ?EXEC  C0 STATE ! ;;                                     
+
+:: VARIABLE   CREATE 0 , ;;                                     
+
+:: CONSTANT                                                     
+   CREATE ,                                                     
+   does-code> (docon) ;;                                        
+
+:: USER                                                         
+   CONSTANT                                                     
+   does-code> (douse) ;;                                        
+
+:: IMMEDIATE                                                    
+   LATEST 40 TOGGLE ;;                                          
+
+:: EXIT                                                         
+   COMPILE (;S) ;;  immediate                                   
+
+:: (                                                            
+   ascii ) WORD  ascii ) ?DELIM  DROP ;;  immediate             
+
+h: MSG                                                          
+   .." WARM START: Y/N " ;;                                     
+
+h: PROMPT                                                       
+   '' MSG 2+ COUNT OVER + SWAP do  (i) C@ (EMIT)  loop ;;       
+
+h: OPTIONS                                                      
+   LOMEM 6 + DUP @ 462D =  SWAP 2+ @ 3739 = AND                 
+   if  LOMEM 2+ DUP @ CXSUM  LOMEM @ =                          
+    if  LOMEM 4 + @ ?DUP                                        
+     if  SET-VARS                                               
+      LOMEM 2+ DUP @ + DP !  EXECUTE                            
+     then                                                       
+     (PAGE)  PROMPT (KEY) DUP (EMIT) 0DF AND ascii N = NOT      
+     if  PAGE ABORT  then                                       
+    then                                                        
+   then  COLD ;;                                                
+
+:: WORDS                                                        
+   0 CONTEXT @ @                                                
+   .." 'ESC' KEY QUITS" CR                                      
+   begin  DUP  while                                            
+    DUP C@ NWIDTH AND OVER OVER 1+ + (>r)                       
+    SWAP 1+ SWAP TYPE SPACE 1+ DUP 03 =                         
+    if  KEY ESC =                                               
+     if  (r>) DROP 0  else  CR DROP 0 (r>) @  then              
+    else  (r>) @                                                
+    then                                                        
+   repeat  2DROP ;;                                             
+
+:: SAVE-BUFFERS                                                 
+   PREV @                                                       
+   begin  DUP @ 0<                                              
+    if  DUP @ ABS OVER 2+ SWAP 0 R/W  0 OVER !                  
+    then  +BUF 0=                                               
+   until  DROP ;;                                               
+
+:: LOAD                                                       
+   BLK @ (>r)  >IN @ (>r)  0 >IN !                           
+   BLK !  INTERPRET  (r>) >IN !  (r>) BLK ! ;;              
+
+:: J                                                       
+   COMPILE (j) ;;  immediate                              
+
+:: K                                                     
+   COMPILE (k) ;;  immediate                            
+
+:: I'                                                  
+   COMPILE (i') ;;  immediate                         
+
+:: ;S                                                
+   ?EXEC (r>) DROP ;;  immediate                    
+
+:: C,                                                           
+   HERE C!  1 DP +! ;;                                          
+
+:: [COMPILE]                                                    
+   ?COMP FIND DUP 0=  0 ?ERROR , ;;  immediate                  
+
+:: LFA                                                          
+   2- 2- ;;                                                     
+
+:: FORGET                                                       
+   CURRENT @ CONTEXT @ - 18 ?ERROR  ?EXEC  FIND DUP             
+   if    HERE @ 1 = 1B ?ERROR                                   
+   else  1+ 0 ?ERROR                                            
+   then  2+ DUP FENCE @ U< 15 ?ERROR  DUP NFA DP !              
+   LFA @ CURRENT @ ! ;;                                         
+
+:: DOES>                                                        
+   ?COMP COMPILE (;CODE)  BRANCH-CODE C,                        
+   '' (code->tc) ,  0 C, ;;  immediate                          
+
+h: ?PAIRS     - 13 ?ERROR ;;                                    
+
+:: BACK                                                         
+   , ;;                                                         
+
+:: AGAIN                                                        
+   1 ?PAIRS COMPILE BRANCH BACK ;;  immediate                   
+
+:: BEGIN                                                        
+   ?COMP  HERE 1 ;;  immediate                                  
+
+:: UNTIL                                                        
+   1 ?PAIRS  COMPILE 0 BRANCH BACK ;;  immediate                
+
+:: IF                                                           
+   COMPILE 0BRANCH HERE 0 , 02 ;;  immediate                    
+
+:: THEN                                                         
+   ?COMP  02 ?PAIRS HERE SWAP ! ;;  immediate                   
+
+:: VOCABULARY                                                   
+   CREATE  LATEST ,  does>  CONTEXT ! ;;                        
+
+:: ELSE                                                         
+   02 ?PAIRS  COMPILE BRANCH  HERE 0 ,                          
+   SWAP 02 [compile] THEN 02 ;;  immediate                      
+
+:: WHILE                                                        
+   [compile] IF  2+ ;;  immediate                               
+
+:: REPEAT                                                       
+   (>r) (>r) [compile] AGAIN  (r>) (r>)                         
+   2- [compile] THEN ;;  immediate                              
+
+:: DO                                                           
+   COMPILE (do) HERE 03 ;;  immediate                           
+
+:: LOOP                                                         
+   03 ?PAIRS COMPILE (loop) BACK ;;  immediate                  
+
+:: PICK                                                         
+   DUP 1 < 0B ?ERROR (pick) ;;                                  
+
+:: ."                                                           
+   ascii "  STATE @                                             
+   if    COMPILE (.") WORD  ascii " ?DELIM  C@ 1+ ALLOT         
+   else  WORD  ascii " ?DELIM  COUNT TYPE                       
+   then  ;;  immediate                                          
+
+:: MOD                                                          
+   DUP if  (/mod) DROP  else  1+ 0A ?ERROR  then ;;             
+
+:: ?LOADING   BLK @ 0= 16 ?ERROR ;;                             
+
+:: -->                                                          
+   ?LOADING  0 >IN !  BLK 1+! ;;  immediate                     
+
+:: '                                                            
+   FIND DUP 0= 0 ?ERROR 2+  STATE @                             
+   if  [compile] LITERAL  then ;;  immediate                    
+
+:: PAD                                                          
+   HERE 40 + ;;                                                 
+
+:: -TRAILING                                                    
+   DUP 0< 19 ?ERROR  DUP 0                                      
+   do  OVER OVER + 1- C@ BL -                                   
+    if  (leave)  else  1-  then                                 
+   loop ;;                                                      
+
+:: I                                                            
+   COMPILE (i) ;;  immediate                                    
+
+:: +LOOP                                                        
+   03 ?PAIRS COMPILE (+loop) BACK ;;  immediate                 
+
+:: ASCII                                                        
+   BL WORD 1+ C@ STATE @                                        
+   if  [compile] LITERAL  then ;;  immediate                    
+
+:: /MOD                                                         
+   DUP                                                          
+   if  (/mod)            else  1+ 0A ?ERROR  then ;;            
+
+:: /                                                            
+   DUP                                                          
+   if  (/mod) SWAP DROP  else  1+ 0A ?ERROR  then ;;            
+
+:: U/MOD                                                        
+   OVER OVER OR if  (m/mod) DROP  else  1+ 0A ?ERROR  then ;;   
+
+:: M/MOD                                                        
+   OVER OVER OR if  (m/mod)       else  1+ 0A ?ERROR  then ;;   
+
+:: SPACES                                                       
+   0 MAX  ?DUP                                                  
+   if  0 do  SPACE  loop  then ;;                               
+
+:: (LINE)                                                       
+   BLOCK SWAP C/L * + C/L ;;                                    
+
+:: .LINE                                                        
+   DGET  (LINE) -TRAILING TYPE  DREL ;;                         
+
+:: <#                                                           
+   PAD HLD ! ;;                                                 
+
+:: HOLD                                                         
+   HLD DUP 1-!  @ C! ;;                                         
+
+:: #                                                            
+   BASE @ M/MOD ROT 9 OVER < if  7 +  then  ascii 0 + HOLD ;;   
+
+:: #S                                                           
+   begin  # OVER OVER OR 0=  until ;;                           
+
+h: (SIGN)                                                       
+   ROT 0< if  ascii - HOLD  then ;;                             
+
+:: #>                                                            
+   DROP DROP HLD @ PAD OVER - ;;                                
+
+:: SIGN                                                         
+   COMPILE (SIGN) ;;  immediate                                 
+
+:: DABS                                                         
+   OVER OVER 0 0 D< if  DNEGATE  then ;;                        
+
+:: S->D                                                         
+   DUP 0< NEGATE ;;                                             
+
+:: D.R                                                          
+   (>r) SWAP OVER DABS                                          
+   <# #S (SIGN) #> (r>) OVER - SPACES TYPE ;;                   
+
+:: D.                                                           
+   0 D.R SPACE ;;                                               
+
+:: .R                                                           
+   (>r) S->D (r>) D.R ;;                                        
+
+:: .                                                            
+   S->D D. ;;                                                   
+
+:: ?                                                            
+   @ . ;;                                                       
+
+:: U.      0 D. ;;                                              
+
+:: DEPTH   S0 @ SP@ - 2/ 1- ;;                                  
+
+:: */MOD                                                        
+   03 PICK SBIT AND (>r) (>r)  OVER SBIT AND OVER SBIT AND XOR  
+   (>r) ABS SWAP ABS U* (i') ABS U/MOD (r>) (r>)  SBIT AND XOR  
+   if  NEGATE  then  SWAP (r>) if  NEGATE  then SWAP ;;         
+
+h: (MESSAGE)                                                    
+   .."  MSG# " . ;;                                             
+
+:: ROLL                                                         
+   DUP 1 < 0B ?ERROR                                            
+   DUP 1+ (pick) (>r) (>r) SP@ DUP 2+                           
+   (r>) 1- 2* <CMOVE DROP (r>) ;;                               
+
+h: .ASCII                                                       
+   SPACE DUP DCOLS @ + SWAP                                     
+   do  (i) C@ 7F OVER > OVER 1F > AND NOT                       
+    if  DROP ascii .  then  EMIT                                
+   loop ;;                                                      
+
+h: .NUM                                                         
+   DUP DCOLS @ + SWAP                                           
+   do  (i) C@ 03 BASE @ 10 < if  1+  then  .R  loop ;;          
+
+:: DUMP                                                         
+   DCOLS @  1 MAX 10 MIN  DUP DCOLS !  (/mod) SWAP              
+   if  1+  then 0                                               
+   do  CR  DUP 04 .R DUP .NUM DUP .ASCII                        
+    DCOLS @ +                                                   
+   loop  DROP ;;                                                
+
+:: MONITOR                                                      
+   03 EXECUTE ;;                                                
+
+:: :                                                            
+   ]  !CSP  CURRENT @ CONTEXT !  CREATE SMUDGE ;;               
+
+:: ;                                                            
+   ?CSP  COMPILE (;S)  SMUDGE [compile] [                       
+   does-code> DOCOL ;;  immediate                               
+
+C180 order here                                                 
+:: X                                                            
+   STATE @ BLK @ AND                                            
+   if  1 1B ?ERROR  then (r>) DROP ;;  mt->h !!                 
+
+:: */                                                           
+   (>r) OVER SBIT AND OVER SBIT AND XOR (>r)                    
+   ABS SWAP ABS U* (i') ABS U/MOD SWAP DROP (r>) (r>)           
+   SBIT AND XOR if  NEGATE  then ;;                             
+
+  60   hsystem CX            62   hsystem CY                    
+  64   hsystem WX            66   hsystem WY                    
+  68   hsystem BASAD                                            
+  14 hconstant DLEN     display hconstant DSAD                  
+ 130 hconstant CCOUNT                                           
+
+h: WCOPY                                                        
+   BASAD @  WY C@  C/L * +  WX C@ +                             
+   DUP DSAD DLEN CMOVE                                          
+   C/L +  DSAD 20 + DLEN CMOVE ;;                               
+
+h: WDOWN                                                        
+   L/S 2- WY C@ >                                               
+   if  1 WY C+!  WCOPY  then ;;                                 
+
+h: WUP                                                          
+   WY C@  0>                                                    
+   if  -1 WY C+!  WCOPY  then ;;                                
+
+h: WRIGHT                                                       
+   C/L DLEN -  WX C@ >                                          
+   if  1 WX C+!  WCOPY  then ;;                                 
+
+h: WLEFT                                                        
+   WX C@  0>                                                    
+   if  -1 WX C+!  WCOPY  then ;;                                
+
+h: SCLEAR                                                       
+   BASAD @  L/S  C/L * BL FILL                                  
+   0 CX C!  0 CY C!  0 WX C!  0 WY C!                           
+   WCOPY ;;                                                     
+
+h: VTAB                                                         
+   CY C@  0>                                                    
+   if  CY C@  WY C@ =                                           
+    if  WUP  then  -1 CY C+!                                    
+   then ;;                                                      
+
+h: CRTN                                                         
+   WX C@  CX C@  > NOT                                          
+   WX C@ DLEN +  CX C@ > AND                                    
+   if  0 WX C!  WCOPY  then  0 CX C! ;;                         
+
+h: LFEED                                                        
+   WY C@ 1+  CY C@ =                                            
+   if  WDOWN  then  1 CY C+!                                    
+   CY C@  L/S 1- >                                              
+   if  L/S 1- CY C!                                             
+    BASAD @ C/L +  BASAD @                                      
+    C/L L/S 1- *  CMOVE                                         
+    BASAD @  C/L L/S 1- * +                                     
+    C/L  BL  FILL  WCOPY                                        
+   then ;;                                                      
+
+h: HTAB                                                         
+   CX C@  WX C@ DLEN + 1- =                                     
+   C/L 1-  CX C@  >                                             
+   if    if  WRIGHT  then  1 CX C+!                             
+   else  if  0 WX C!  WCOPY  then  0 CX C!  LFEED               
+   then ;;                                                      
+
+h: BSP                                                          
+   CX C@ DUP  0>                                                
+   if  WX C@  = if  WLEFT  then  -1 CX C+!                      
+   else  DROP  CY C@  0>                                        
+    if  -1 CY C+!  C/L 1- CX C!                                 
+     1 WX C@  >                                                 
+     if  C/L DLEN - WX C!  WUP  then                            
+    then                                                        
+   then ;;                                                      
+
+h: CADDR                                                        
+   BASAD @  CY C@  C/L * +  CX C@  + ;;                         
+
+h: ?DISP!                                                       
+   WX C@  CX C@  > NOT                                          
+   WX C@ DLEN +  CX C@  > AND                                   
+   WY C@  CY C@  > NOT                                          
+   WY C@ 2+  CY C@  > AND  AND                                  
+   if  DSAD  CY C@  WY C@ - 20 * +                              
+    CX C@  WX C@ - + C!                                         
+   else  DROP                                                   
+   then ;;                                                      
+
+:: [EMIT]                                                       
+   DUP 20 80 WITHIN                                             
+   if  DUP CADDR C!  DUP ?DISP! HTAB                            
+   else  DUP C/R =                                              
+    if  CRTN  else  DUP L/F =                                   
+     if  LFEED  else  DUP BS =                                  
+      if  BSP  else  DUP 09 =                                   
+       if  HTAB  else  DUP 10 =                                 
+        if  VTAB  else  DUP 0C = if  SCLEAR  then               
+        then                                                    
+       then                                                     
+      then                                                      
+     then                                                       
+    then                                                        
+   then  DROP ;;                                                
+
+:: (PAUSE)                                                      
+   03 DROP ;;                                                   
+
+h: CFLASH                                                       
+   CADDR C@  CCOUNT 1                                           
+   begin  (?TERMINAL) NOT  while                                
+    OVER 1 SWAP  0>                                             
+    if  -  else  +  then  DUP NOT                               
+    if  DROP NEGATE  DUP DUP  0>                                
+     if  03 PICK  else  ascii _  then  ?DISP!                   
+    then  (PAUSE)                                               
+   repeat  2DROP  ?DISP!   (KEY) ;;                             
+
+:: [KEY]                                                        
+   begin  CFLASH DUP  0B =                                      
+    if  WLEFT NOT  else  DUP 0C =                               
+     if  WRIGHT NOT  else  DUP 04 =                             
+      if  WUP NOT  else  DUP 15 =                               
+       if  WDOWN NOT  else  TRUE  then                          
+      then                                                      
+     then                                                       
+    then                                                        
+   until ;;                                                     
+
+:: [PAGE]   0C EMIT ;;                                          
+
+:: LCD                                                          
+   '' [EMIT] CFA 'EMIT     !  '' [PAGE] CFA 'PAGE !             
+   '' [KEY]  CFA DEVICE 2+ !     HIMEM      BASAD !             
+   '' (CR)   CFA 'CR       !  OK PAGE ;;                        
+
+h: LINE                                                         
+   SCR @ BUFFER SWAP C/L * + ;;                                 
+
+h: A                                                            
+   CY C@ DUP L/S 1- <                                           
+   if  DUP LINE OVER 1+ LINE 
+    L/S 1- CY C@ - C/L * <CMOVE
+   then  LINE C/L BL FILL 
+   WCOPY ;;                             
+
+h: X                                                              
+   CY C@ DUP 1+  LINE SWAP DUP  LINE L/S 1- ROT -                 
+   C/L * CMOVE  L/S 1- LINE C/L BL FILL  WCOPY ;;               
+
+:: N                                                            
+   SCR @ 1+ NBUFRS MIN SCR ! ;;                                 
+
+:: B                                                            
+   SCR @ 1- 1 MAX SCR ! ;;                                                                                                                                                                      
+
+h: DELETE                                                       
+   CX C@  0>                                                      
+   if  CADDR DUP 1- C/L CX C@ - CMOVE                             
+  BL CY C@ 1+ LINE 1- C!  BSP  WCOPY                             
+then  0 R# ! ;;                                              
+
+h: INSERT                                                       
+   C/L 1-  CX C@ >                                              
+   if  CY C@ LINE CX C@ + DUP 1+  C/L 1- CX C@ -  <CMOVE        
+    [EMIT]  WCOPY                                               
+   else  DROP                                                   
+   then  0 R# ! ;;                                              
+
+h: SET-EDIT                                                     
+   BASAD @  CY C@  CX C@  0 LINE BASAD !  R# @ C/L (/mod)       
+   DUP CY C!  WY C!  DUP CX C!  WX C!  WCOPY ;;                 
+
+h: END-EDIT                                                     
+   DROP  DUP WX C!  CX C!  DUP L/S 2- MIN WY C!  CY C!          
+   BASAD !  WCOPY  LFEED ;;                                     
+
+h: CHECK-POS                                                    
+   DUP 02 =                                                     
+   if  10  else  DUP 13 = L/S 1-  CY C@ > AND                   
+    if  L/F  else  DUP 9 = CX C@  0> AND                        
+     if  BS  else  DUP 0A = C/L 1- CX C@ > AND                  
+      if  09  else  DUP C/R =                                   
+       if  CY C@ L/S 1- < if  LFEED  then  DUP  else  0  then   
+      then                                                      
+     then                                                       
+    then                                                        
+   then  [EMIT] ;;                                              
+
+:: CLEAR                                                        
+   0 LINE  B/BUF BL FILL ;;                                     
+
+:: EDIT                                                         
+   SET-EDIT                                                     
+   begin  KEY DUP ESC = NOT  while                              
+    DUP RUBOUT =                                                
+    if  DROP DELETE  else  DUP 20 80 WITHIN                     
+     if  INSERT  else  DUP 1 =                                  
+      if  A  else  DUP 18 =                                     
+       if  X  else  CHECK-POS  then                             
+      then  DROP                                                
+     then                                                       
+    then                                                        
+   repeat  END-EDIT ;;                                          
+
+:: LIST                                                         
+   1 MAX NBUFRS MIN SCR ! 0 R# ! EDIT ;;                        
+
+\ Forth installation test defs                          sr 08/0                                                                 
+
+:: H.  04 HEXOUT ;;                                             
+
+:: NV  INVAL DROP ;;                                            
+
+(( Set [CR] to [PAGE] for HHC Monitor: )                        
+'' (PAGE) forth 2-                                              
+tv order  '' VEC-LIST forth 04 + tv mt->h !!                    
+                                                                
+'' IEMIT forth 2-                                               
+tv order  origin  forth 20 + tv mt->h !!                        
+
+00 constant IP                                                  
+h: P2   ascii S (EMIT) NV ascii S (EMIT) NV  ;;                 
+
+:: DEBUG   ascii I (EMIT) NV '' IP !  (PAGE)                    
+   begin  IP @  02 '' IP +!  DUP '' BRANCH CFA =                
+    OVER '' (loop) CFA = OR                                     
+    if  DROP  IP @ '' IP ! .." BRANCH"                          
+    else  DUP '' 0BRANCH CFA =                                  
+     if  DROP 0=                                                
+      if  IP @ '' IP ! .." 0BRANCH"                             
+      else  IP 2+ '' IP ! .." (IF)"  then                       
+     else  DUP '' (do) CFA =                                    
+      if  DROP  .." (DO) " H. H.                                
+      else  DUP '' LIT CFA =                                    
+       if  DROP IP @  02 '' IP +!  .." LIT: " DUP H.            
+       else  DUP '' (.") CFA = 
+       if  DROP IP C@ 1+ '' IP +!  .." [.'] "                   
+       else  EXECUTE IP 2- H. SP@ H. ascii : (EMIT) DUP H.      
+       then                                                     
+      then                                                      
+     then                                                       
+    then                                                        
+   then                                                         
+   (KEY) DUP ESC = NOT                                          
+   if  7F = if  DROP NV  then  (PAGE) FALSE  then               
+  until ;;                                                                                                                                                                                                                                                                                                                      
+
+:: 79-STANDARD  ;;                                              
+
+r-org here forth 0F + FFF0 AND MAX  tv order '' LOMEM mt->h !!  
+'' OPTIONS                                                      
+tv order  origin  forth 08 + tv mt->h !!                        
+'' ABORT                                                        
+tv order  origin  forth 0A + tv mt->h !!                        
+'' 79-STANDARD mt->h nfa mh->t                                  
+tv order  origin  forth 0C + tv mt->h !!                        
+'' COLD      forth 2-                                           
+tv order  origin  forth 1E + tv mt->h !!                        
+'' (EMIT)    forth 2-                                           
+tv order  origin  forth 20 + tv mt->h !!                        
+'' (MESSAGE) forth 2-                                           
+tv order  '' VEC-LIST           mt->h !!                                                                                        
+
+( HHC: 'Origin' table )          0800 dp !!   \         sr 08/0 
+asmac seq  0000 lbr ( Cold )     seq  0000 lbr ( Warm )    tv   
+0000 ,,             ( PFA of 1st word for Cold start  )         
+0000 ,,             (  "   "  "    "   "  Warm   "    )         
+0000 ,,             ( LATEST NFA in FORTH vocabulary  )         
+007F ,,             ( Erase key code                  )         
+3380 ,,             ( Initial user area               )         
+32C0 ,,             (    "    top of Parameter stack  )         
+3380 ,,             (    "     "   " Return      "    )         
+32C2 ,,             (    "    Terminal Input Buffer   )         
+001F ,,             ( Name field width                )         
+0000 ,,             ( Initial value of WARNING        )         
+2800 ,,             (    "      "    " FENCE          )         
+0000 ,,             ( CFA of COLD word                )         
+0000 ,,             ( CFA of EMIT word                )         
+0000 ,,             ( LATEST NFA in EDITOR vocabulary )         
+
+\ HHC: GOFORTH                                          sr 08/0 
+hcode GOFORTH   tv -2 dp ++!                                    
+ tv here order origin 02 forth +  tv mt->h !!                   
+ ( Cold: )    origin 08 forth +  tv  asmac a.0 ldi              
+ tv here 04 forth +  tv  asmac br                               
+ tv here order origin 06 forth +  tv  tv mt->h !!               
+ ( Warm: )    origin 0A forth +  tv  asmac a.0 ldi              
+ ( Both: ) w plo  tv origin 08 forth +  tv asmac a.1 ldi  w phi 
+ w lda  i phi  w ldn  i plo                    ( setup I )      
+ tv origin 10 forth +  tv  asmac a.0 ldi  w plo                 
+ w lda  v phi  u phi  w lda  v plo  u plo      ( setup V & U )  
+ w lda  s phi  w lda  s plo  s sex             ( setup S )      
+ w lda  r phi  w lda  r plo                    ( setup R )      
+ tv 'inext forth DUP  tv asmac a.1 ldi  r8 phi ( get Inext adr) 
+                               a.0 ldi  r8 plo  seq  next       
+end-code                                                        

@@ -1,0 +1,200 @@
+:: */MOD                                                        
+   03 PICK SBIT AND (>r) (>r)  OVER SBIT AND OVER SBIT AND XOR  
+   (>r) ABS SWAP ABS U* (i') ABS U/MOD (r>) (r>)  SBIT AND XOR  
+   if  NEGATE  then  SWAP (r>) if  NEGATE  then SWAP ;;         
+
+:: */                                                           
+   (>r) OVER SBIT AND OVER SBIT AND XOR (>r)                    
+   ABS SWAP ABS U* (i') ABS U/MOD SWAP DROP (r>) (r>)           
+   SBIT AND XOR if  NEGATE  then ;;                             
+
+  60   hsystem CX            62   hsystem CY                    
+  64   hsystem WX            66   hsystem WY                    
+  68   hsystem BASAD                                            
+  14 hconstant DLEN     display hconstant DSAD                  
+ 130 hconstant CCOUNT                                           
+
+h: WCOPY                                                        
+   BASAD @  WY C@  C/L * +  WX C@ +                             
+   DUP DSAD DLEN CMOVE                                          
+   C/L +  DSAD 20 + DLEN CMOVE ;;                               
+
+h: WDOWN                                                        
+   L/S 2- WY C@ >                                               
+   if  1 WY C+!  WCOPY  then ;;                                 
+
+h: WUP                                                          
+   WY C@  0>                                                    
+   if  -1 WY C+!  WCOPY  then ;;                                
+
+h: WRIGHT                                                       
+   C/L DLEN -  WX C@ >                                          
+   if  1 WX C+!  WCOPY  then ;;                                 
+
+h: WLEFT                                                        
+   WX C@  0>                                                    
+   if  -1 WX C+!  WCOPY  then ;;                                
+
+h: SCLEAR                                                       
+   BASAD @  L/S  C/L * BL FILL                                  
+   0 CX C!  0 CY C!  0 WX C!  0 WY C!                           
+   WCOPY ;;                                                     
+
+h: VTAB                                                         
+   CY C@  0>                                                    
+   if  CY C@  WY C@ =                                           
+    if  WUP  then  -1 CY C+!                                    
+   then ;;                                                      
+
+h: CRTN                                                         
+   WX C@  CX C@  > NOT                                          
+   WX C@ DLEN +  CX C@ > AND                                    
+   if  0 WX C!  WCOPY  then  0 CX C! ;;                         
+
+h: LFEED                                                        
+   WY C@ 1+  CY C@ =                                            
+   if  WDOWN  then  1 CY C+!                                    
+   CY C@  L/S 1- >                                              
+   if  L/S 1- CY C!                                             
+    BASAD @ C/L +  BASAD @                                      
+    C/L L/S 1- *  CMOVE                                         
+    BASAD @  C/L L/S 1- * +                                     
+    C/L  BL  FILL  WCOPY                                        
+   then ;;                                                      
+
+h: HTAB                                                         
+   CX C@  WX C@ DLEN + 1- =                                     
+   C/L 1-  CX C@  >                                             
+   if    if  WRIGHT  then  1 CX C+!                             
+   else  if  0 WX C!  WCOPY  then  0 CX C!  LFEED               
+   then ;;                                                      
+
+h: BSP                                                          
+   CX C@ DUP  0>                                                
+   if  WX C@  = if  WLEFT  then  -1 CX C+!                      
+   else  DROP  CY C@  0>                                        
+    if  -1 CY C+!  C/L 1- CX C!                                 
+     1 WX C@  >                                                 
+     if  C/L DLEN - WX C!  WUP  then                            
+    then                                                        
+   then ;;                                                      
+
+h: CADDR                                                        
+   BASAD @  CY C@  C/L * +  CX C@  + ;;                         
+
+h: ?DISP!                                                       
+   WX C@  CX C@  > NOT                                          
+   WX C@ DLEN +  CX C@  > AND                                   
+   WY C@  CY C@  > NOT                                          
+   WY C@ 2+  CY C@  > AND  AND                                  
+   if  DSAD  CY C@  WY C@ - 20 * +                              
+    CX C@  WX C@ - + C!                                         
+   else  DROP                                                   
+   then ;;                                                      
+
+:: [EMIT]                                                       
+   DUP 20 80 WITHIN                                             
+   if  DUP CADDR C!  DUP ?DISP! HTAB                            
+   else  DUP C/R =                                              
+    if  CRTN  else  DUP L/F =                                   
+     if  LFEED  else  DUP BS =                                  
+      if  BSP  else  DUP 09 =                                   
+       if  HTAB  else  DUP 10 =                                 
+        if  VTAB  else  DUP 0C = if  SCLEAR  then               
+        then                                                    
+       then                                                     
+      then                                                      
+     then                                                       
+    then                                                        
+   then  DROP ;;                                                
+
+:: (PAUSE)                                                      
+   03 DROP ;;                                                   
+
+h: CFLASH                                                       
+   CADDR C@  CCOUNT 1                                           
+   begin  (?TERMINAL) NOT  while                                
+    OVER 1 SWAP  0>                                             
+    if  -  else  +  then  DUP NOT                               
+    if  DROP NEGATE  DUP DUP  0>                                
+     if  03 PICK  else  ascii _  then  ?DISP!                   
+    then  (PAUSE)                                               
+   repeat  2DROP  ?DISP!   (KEY) ;;                             
+
+:: [KEY]                                                        
+   begin  CFLASH DUP  0B =                                      
+    if  WLEFT NOT  else  DUP 0C =                               
+     if  WRIGHT NOT  else  DUP 04 =                             
+      if  WUP NOT  else  DUP 15 =                               
+       if  WDOWN NOT  else  TRUE  then                          
+      then                                                      
+     then                                                       
+    then                                                        
+   until ;;                                                     
+
+h: LINE                                                         
+   SCR @ BUFFER SWAP C/L * + ;;                                 
+
+h: A                                                            
+   CY C@ DUP L/S 1- <                                           
+   if  DUP LINE OVER 1+ LINE 
+    L/S 1- CY C@ - C/L * <CMOVE
+   then  LINE C/L BL FILL 
+   WCOPY ;;                             
+
+h: X                                                              
+   CY C@ DUP 1+  LINE SWAP DUP  LINE L/S 1- ROT -                 
+   C/L * CMOVE  L/S 1- LINE C/L BL FILL  WCOPY ;;               
+
+:: N                                                            
+   SCR @ 1+ NBUFRS MIN SCR ! ;;                                 
+
+:: B                                                            
+   SCR @ 1- 1 MAX SCR ! ;;                                                                                                                          h: DELETE                                                       
+   CX C@  0>                                                      
+   if  CADDR DUP 1- C/L CX C@ - CMOVE                             
+  BL CY C@ 1+ LINE 1- C!  BSP  WCOPY                             
+then  0 R# ! ;;                                              
+
+h: INSERT                                                       
+   C/L 1-  CX C@ >                                              
+   if  CY C@ LINE CX C@ + DUP 1+  C/L 1- CX C@ -  <CMOVE        
+    [EMIT]  WCOPY                                               
+   else  DROP                                                   
+   then  0 R# ! ;;                                              
+
+h: SET-EDIT                                                     
+   BASAD @  CY C@  CX C@  0 LINE BASAD !  R# @ C/L (/mod)       
+   DUP CY C!  WY C!  DUP CX C!  WX C!  WCOPY ;;                 
+
+h: END-EDIT                                                     
+   DROP  DUP WX C!  CX C!  DUP L/S 2- MIN WY C!  CY C!          
+   BASAD !  WCOPY  LFEED ;;                                     
+
+h: CHECK-POS                                                    
+   DUP 02 =                                                     
+   if  10  else  DUP 13 = L/S 1-  CY C@ > AND                   
+    if  L/F  else  DUP 9 = CX C@  0> AND                        
+     if  BS  else  DUP 0A = C/L 1- CX C@ > AND                  
+      if  09  else  DUP C/R =                                   
+       if  CY C@ L/S 1- < if  LFEED  then  DUP  else  0  then   
+      then                                                      
+     then                                                       
+    then                                                        
+   then  [EMIT] ;;                                              
+
+:: CLEAR                                                        
+   0 LINE  B/BUF BL FILL ;;                                     
+
+:: EDIT                                                         
+   SET-EDIT                                                     
+   begin  KEY DUP ESC = NOT  while                              
+    DUP RUBOUT =                                                
+    if  DROP DELETE  else  DUP 20 80 WITHIN                     
+     if  INSERT  else  DUP 1 =                                  
+      if  A  else  DUP 18 =                                     
+       if  X  else  CHECK-POS  then                             
+      then  DROP                                                
+     then                                                       
+    then                                                        
+   repeat  END-EDIT ;;                                          

@@ -1,0 +1,46 @@
+- configuration
+  - memory map
+    memory is divided initially into 5 areas: precompiled code (ie. user and system 'dictionaries'); user-extended dictionary; stacks; terminal input buffer;  and file buffers
+
+    - precompiled code
+      contains 'inner interpreter' for threaded code, interface with C environment, initial dictionaries of threaded and machine code definitions ('words')
+ 
+    - user-extended dictionary
+      new definitions are added at a low RAM address and grow upwards towards the stack areas
+
+    - stacks
+      two stack areas: a parameter stack for passing arguments between words; a return stack for storing return addresses and loop count data (also accessible to user for temporary argument storage)
+
+      the stacks are 32 bits wide
+
+    - terminal input buffer (TIB)
+      user word names & data, entered via the 'keyboard', are stored in the TIB for parsing by the 'outer' interpreter
+      
+    - file buffers
+      a configurable number of buffers are available for accessing data and source code held in files
+      
+
+    the size of these different memory areas is user-configurable within the memory map constraints of the allocated RAM space
+
+- interpreting
+  - kernel words
+
+- compiling
+  - constants
+  - variables
+  - system variables
+  - threaded definitions
+  - user-created definitions
+
+- editing
+  - Notepad
+  - screens (no. lines config?)
+
+- file handling
+  - file control blocks
+  - buffer allocation
+
+
+- loading
+  - compiling from screens
+

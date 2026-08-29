@@ -1,0 +1,65 @@
+000 operator
+004 nexttask
+008 s_zero
+012 r_zero
+016 tib
+020 width
+024 fence
+028 warning
+032 device
+036   "
+040 use
+044 fld
+048 dpl
+052 dcols
+056 hld
+060 nxt
+064 out
+068 state
+072 base
+076 offset
+080 r_hash
+084 scr
+088 blk
+092 prev
+096 to_in
+100 dp
+104 csp
+108 context
+112 current
+116 tick_message
+120 tick_error
+124 tick_cr
+128 tick_page
+132 tick_r_w
+136 tick_abort
+140 tick_quit
+144 tick_cold
+148 tick_emit
+152 fpoint
+156 apoint
+160 epoint
+164 spoint
+168 dpoint
+172 tick_get
+176 tick_release
+180 tick_first
+184 tick_limit
+188 tick_dot_r
+192 
+196 dip
+200 
+204 
+208 
+212 
+216 
+220 
+224 
+228 
+232 
+236 
+240 
+244 
+248 
+252 
+256

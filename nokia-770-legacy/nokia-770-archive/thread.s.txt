@@ -1,0 +1,5517 @@
+ 	.cpu arm9tdmi
+	.fpu softvfp
+	.file	"thread.c"
+
+ 	.text
+	.align	2, 0
+	.global	thread
+	.type	thread, %function
+
+thread:
+	@ args = 0, pretend = 0, frame = 8
+	@ frame_needed = 1, uses_anonymous_args = 0
+
+ 	mov	ip, sp
+	stmfd	sp!, {fp, ip, lr, pc}
+ 	sub	fp, ip, #4
+	sub	sp, sp, #8
+
+       	stmfd 	sp!, {r2-r11}		/* preserve entry state */
+      	ldr   	v3, .L1
+      	str   	sp, [v3, #C_SP]
+
+      	mov   	sl, r0			/* setup stack min, DP & RAM top */
+	str	r0, [v3, #DP_ADD]
+      	add   	r2, r1, r0
+	str	r2, [v3, #RAMTOP]
+
+      	b     	origin			/* go initialise TIL */
+
+back2c:
+      	ldr   	v3, .L1			/* restore entry state */
+      	ldr   	sp, [v3, #C_SP]
+      	ldmfd 	sp!, {r2-r11}
+
+ 	sub	sp, fp, #12
+	ldmfd	sp, {fp, sp, pc}
+.L3:
+
+/* ====== End of 'C' interface ======= */
+
+
+	.include "thread_macros.s"
+
+	.set       BperBUF, (1024 * SCRperBUF)
+	.set    BRANCHCODE, 0xEA
+ 	.set          C_SP, 0x10
+	.set        DP_ADD, 0x18
+	.set         ENTER, 0x0A	/* 0x0D  !!! */
+	.set           ESC, 0x40	/* 0x1B  !!! */
+	.set      NBUFFERS, 3
+	.set     SCRperBUF, 16
+	.set        NWIDTH, 31
+	.set        RAMTOP, 0x14
+	.set        RP_ADD, 0x08
+	.set        RUBOUT, 0x7F
+	.set        SP_ADD, 0x04
+	.set       TIB_ADD, 0x0C
+	.set    TIB_RS_LEN, (1040 + (1024 * 4))
+	.set       TOS_GAP, (16 * 4)
+	.set       TOR_GAP, (4 * 4)
+	.set        UP_ADD, 0x00
+	.set       UVARLEN, 0x100
+
+
+ 	.align	2, 0
+.L2:	.long	TIB_RS_LEN
+.L1:	.long	vm_vars
+
+ 	.text
+ 	.align	2, 0
+
+origin:
+	b  	_cold		/* +00 branch to cold-start entry		*/
+	b  	_cold		/* +04 branch to warm-start entry		*/
+	pfa	b_cold_		/* +08 PFA of cold-start thread			*/
+	pfa	abort_		/* +0C PFA "  warm-  "	   "			*/
+	addr	x		/* +10 LATEST NFA in FORTH vocab		*/
+	.long	RUBOUT		/* +14 Erase key code				*/
+				/* 'set_vars_' copies next 4 items from vm_vars	*/
+        .long   0		/* +18  Initial user area			*/
+        .long   0		/* +1C   "    top of Parameter stack		*/
+        .long   0		/* +20   "     "   " Return      "		*/
+        .long   0		/* +24   "    Terminal Input Buffer		*/
+        .long	NWIDTH      	/* +28  Name field width			*/
+        .long   0           	/* +2C  Initial value of WARNING		*/
+        addr    x_ + 0x10	/* +30     "      "    " FENCE			*/
+        addr    cold_       	/* +34  CFA of COLD word			*/
+        addr    _b_emit     	/* +38  CFA of EMIT m/code			*/
+        addr    test		/* +3C  LATEST NFA in SYSWORDS vocabulary	*/
+        addr    _b_key     	/* +40  CFA of KEY m/code - waits for char i/p	*/
+
+
+/* ================ Initialise VM ================== */
+
+_cold:
+  ldr   v3, .L1
+  ldr	r1, [v3, #RAMTOP]
+  sub   r1, r1, #UVARLEN
+  mov   v4, r1			/* setup VP */
+  mov   v5, r1			/* setup UP */
+  str   r1, [v3, #UP_ADD]
+
+  sub   r1, r1, #TOR_GAP
+  str   r1, [v3, #RP_ADD]
+  mov   r9, r1			/* setup RP */
+
+  ldr	r0, .L2
+  sub   r1, r1, r0
+  str   r1, [v3, #TIB_ADD]	/* setup TIB */
+
+  sub   r1, r1, #TOS_GAP
+  str   r1, [v3, #SP_ADD]
+  mov   sp, r1			/* setup SP */
+
+  ldr   ip, (origin + 8)	/* setup IP */
+  next				/* go start threaded code */
+
+
+/* ========= headerless Kernel definitions ========= */
+
+/*
+_b_div_mod  mcode     ; take .L num & denom (TOS) and leave .W rem & quot (TOS)
+ */
+
+  nolink
+_b_to_r:	/* pop .L TOS, push .L to Rstack */
+  mcode
+  ldr   fp,[sp],#4
+  str   fp,[r9,#-4]!
+  next
+
+  nolink
+_b_zbranch:	/* pop .L TOS, .W true-relative branch-if-0 */
+  mcode
+  ldr   r0,[sp],#4
+  cmp   r0,#0
+  beq   _b_branch + 4
+  add   ip,ip,#4
+  next
+
+  nolink
+_b_branch:	/* .W true-relative branch */
+  mcode
+  ldr   ip,[ip]
+  next
+
+  nolink
+_b_code_to_tc:
+  mcode
+  str   fp,[sp,#-4]!
+  ldr   fp,[fp,#-4]
+  add   fp,fp,#4
+  str   ip,[r9,#-4]!
+  mov   ip,fp
+  next
+
+  nolink
+_b_lit:	/* push .L TOS from .L via IP */
+  mcode
+  ldr   fp,[ip],#4
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+_b_do:	/* pop 2 .L TOS & push on Rstack */
+  mcode
+  ldr   fp,[sp],#4
+  ldr   r0,[sp],#4
+  str   r0,[r9,#-4]!
+  str   fp,[r9,#-4]!
+  next
+
+  nolink
+_b_docol:	/* push .L I to Rstack, load I with W */
+  mcode
+  str   ip,[r9,#-4]!
+  mov   ip,fp
+  next
+
+  nolink
+_b_docon:	/* push .L value via W reg */
+  mcode
+  ldr   r0,[fp]
+  str   r0,[sp,#-4]!
+  next
+
+  nolink
+_b_dosys:	/* push .L addr of System variable */
+  mcode
+  ldr   fp,[fp]
+  add   fp,fp,v5   /* !!! v4 */
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+_b_douse:	/* push .L addr of User variable */
+  mcode
+  ldr   fp,[fp]
+  add   fp,fp,v5
+  str   fp,[sp,#-4]!
+  next
+ 
+  nolink
+_b_dovar:	/* push .L address from W reg */
+  mcode
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+_b_emit:
+  mcode
+  ldr   r0,[sp],#4
+  and   r0,r0,#0xff
+  stmfd sp!,{r7-r12}
+  bl    putchar
+  ldmfd sp!,{r7-r12}
+  next
+
+  nolink
+_exit_forth:
+  mcode
+  b     back2c
+  next
+ 
+  nolink
+_b_find:	/* pop .L TOS nfa list start, pop .L addr name, push .L addr */
+  mcode
+  ldr   r0,[sp],#4
+  ldr   r1,[sp]
+  mov   fp,#0
+  str   fp,[sp]
+_bfnd1:
+  cmp   r0,#0
+  beq   _bfndB
+  ldrb  r2,[r0]
+  and   r2,r2,#63
+  ldrb  r5,[r1]
+  cmp   r2,r5
+  bne   _bfndC
+  and   r2,r2,#NWIDTH
+  mov   fp,#1
+  mov   r5,r2
+_bfndF:
+  cmp   r5,#0
+  beq   _bfndC
+  add   r6,r0,r5
+  ldrb  r3,[r6]
+  and   r3,r3,#127
+  add   r6,r1,r5
+  ldrb  r4,[r6]
+  cmp   r3,r4
+  beq   _bfndG
+  mov   fp,#0
+  mov   r5,#1
+_bfndG:
+  sub   r5,r5,#1
+  b     _bfndF
+_bfndC:
+  and   r2,r2,#NWIDTH
+  add   r0,r0,r2
+  mov   r0,r0,LSR#2
+  mov   r0,r0,LSL#2
+  add   r0,r0,#0x04
+  cmp   fp,#0
+  beq   _bfndD
+  add   r0,r0,#4
+  str   r0,[sp]
+  mov   r0,#0
+  b     _bfndE
+_bfndD:
+  ldr   r0,[r0]
+_bfndE:
+  b     _bfnd1
+_bfndB:
+  next
+
+  nolink
+_b_i:	/* push .L TOS copied from top of Rstack */
+  mcode
+  ldr   fp,[r9]
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+_b_iprime:	/* push .L TOS copied from (top+1) of Rstack */
+  mcode
+  add   r6,r9,#4
+  ldr   fp,[r6]
+  str   fp,[sp,#-4]!
+  next
+ 
+  nolink
+_b_j:	/* push .L TOS copied from (top+2) of Rstack */
+  mcode
+  add   r6,r9,#8
+  ldr   fp,[r6]
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+_b_k:	/* push .L TOS copied from (top+4) of Rstack */
+  mcode
+  add   r6,r9,#16
+  ldr   fp,[r6]
+  str   fp,[sp,#-4]!
+  next
+
+  nolink
+inext:	/*  */
+  ldr   fp,[ip],#4
+  ldr   lr,[fp],#4
+  mov   pc,lr
+
+  nolink
+_b_key:	/*  */
+  mcode
+  stmfd sp!, {r7-r12}
+  bl    getchar
+  ldmfd sp!, {r7-r12}
+  and   r0,r0,#0xff
+  str   r0,[sp,#-4]!
+  next
+
+  nolink
+_b_qkey:	/*  */
+  mcode
+/* ?key code here */
+  next
+ 
+  nolink
+_b_leave:	/* set top+1 .L on Rstack to value of top .L of Rstack */
+  mcode
+  add   r6,r9,#4
+  ldr   fp,[r9]
+  str   fp,[r6]
+  next
+
+  nolink
+_b_loop:	/* incr .L top of Rstack, true-reltv br-if-count-exceeded */
+  mcode
+  ldr   r2,[r9]
+  add   r2,r2,#1
+  str   r2,[r9]
+  add   r6,r9,#4
+  ldr   r1,[r6]
+  cmp   r2,r1
+  bge   lp1
+  ldr   ip,[ip]
+  next
+lp1:
+  add   r9,r9,#8
+  add   ip,ip,#4
+  next
+
+  nolink
+_b_plus_loop:	/* incr .L top of Rstack by signed val on TOS, true-reltv br-if-count-exceeded */
+  mcode
+  ldr   fp,[sp],#4
+  ldr   r2,[r9]
+  add   r2,r2,fp
+  str   r2,[r9]
+  add   r0,r9,#4
+  ldr   r1,[r0]
+  mov	  r0,#0
+  cmp   r2,r1
+  bge   plp1
+  mov	  r0,#1
+plp1:
+  cmp   fp,#0
+  bge   plp2
+  eor   r0,r0,#1
+plp2:  
+  cmp   r0,#1
+  bne   plp3
+  ldr   ip,[ip]
+  next
+plp3:
+  add   r9,r9,#8
+  add   ip,ip,#4
+  next
+
+  nolink
+_b_pick:	/* pop .L TOS, fetch .L at offset from TOS, push .L to TOS */
+  mcode
+  ldr   fp,[sp]
+  mov   r6,sp
+  add   r6,r6,fp,LSL#2
+  ldr   fp,[r6]
+  str   fp,[sp]
+  next
+
+  nolink
+_b_r_at:	/* push .L TOS copied from top of Rstack */
+  mcode
+  ldr   fp,[r9]
+  str   fp,[sp,#-4]!
+  next
+ 
+  nolink
+_b_r_from:	/* pop .L top of Rstack, push .L to TOS */
+  mcode
+  ldr   fp,[r9],#4
+  str   fp,[sp,#-4]!
+  next
+ 
+  nolink
+_restart:	/* branch to 'Cold' start entry */
+  mcode
+  b     _cold
+  next
+
+  nolink
+_b_rp_store:	/*  */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr   r9,[sp],#4
+  next
+ 
+  nolink
+_b_semi_s:	/* pop .L from Rstack into IP */
+  mcode
+  ldr   ip,[r9],#4
+  next
+
+  nolink
+_b_sp_store:	/*  */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr   r0,[sp],#4
+  mov   sp,r0
+  next
+
+  nolink
+_b_sp_at:	/* fetch SP value, push .L to TOS */
+  mcode
+  mov   r0,sp
+  str   r0,[sp,#-4]!
+  next
+
+
+/* ======== headerless Sys & User variables ======== */
+
+  nolink
+_tick_dot_r_:
+  svar
+  val   188
+
+  nolink
+_apoint_:
+  svar
+  val   156
+
+  nolink
+_epoint_:
+  svar
+  val   160
+
+  nolink
+_tpoint_:
+  svar
+  val   152
+
+  nolink
+_nexttask_:
+  uvar
+  val  04
+
+  nolink
+_tick_abort_:
+  svar
+  val   136
+
+  nolink
+_tick_cold_:
+  svar
+  val   144
+
+  nolink
+_tick_cr_:
+  svar
+  val   124
+
+  nolink
+_tick_emit_:
+  svar
+  val   148
+
+  nolink
+_tick_error_:
+  svar
+  val   120
+
+  nolink
+_tick_get_:
+  svar
+  val   172
+
+  nolink
+_tick_message_:
+  svar
+  val   116
+
+  nolink
+_tick_page_:
+  svar
+  val   128
+
+  nolink
+_tick_quit_:
+  svar
+  val   140
+
+  nolink
+_tick_release_:
+  svar
+  val   176
+
+  nolink
+_tick_r_w_:
+  svar
+  val   132
+
+  nolink
+_spoint_:  
+  svar
+  val   164
+
+
+/* ======== headerless Constant definitions ======== */
+
+  nolink
+_bbuf_:
+  const
+  val   BperBUF
+
+  nolink
+_bs_:
+  const
+  val   0x08
+
+ nolink
+_branchcode_:
+  const
+  val   BRANCHCODE
+
+  nolink
+_cl_:
+  const
+  val    64
+
+  nolink
+_cr_:
+  const
+  val   0x0D
+
+  nolink
+_himem_:
+  const
+  val   limit_buf
+
+  nolink
+_lf_:
+  const
+  val   0x0A
+
+  nolink
+_ls_:
+  const
+  val    16
+
+ nolink
+_nbufrs_:
+  const
+  val   NBUFFERS
+
+ nolink
+_nwidth_:
+  const
+  val   NWIDTH
+
+ nolink
+_origin_:
+  const
+  val    origin
+
+  nolink
+_rubout_:
+  const
+  val   RUBOUT
+
+  nolink
+_sbit_:
+  const
+  val    0x80000000
+
+
+/* ======== headerless Threaded definitions (Sys) ======== */
+
+  nolink
+dot_ascii_:
+  thread
+  cfa    _b_lit
+  val    0x08
+  cfa    _b_lit
+  val    0x00
+  cfa   _b_do
+dtasc1:
+  cfa    _dup
+  cfa    _b_i
+  cfa    _plus
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x7F
+  cfa    _min
+  cfa    _b_lit
+  val    0x20
+  cfa    _max
+  cfa    _b_emit
+  cfa    _b_loop
+  addr   dtasc1
+  cfa    _drop
+  exit
+
+  nolink
+dot_num_:
+  thread
+  cfa    _b_lit
+  val    0x08
+  cfa    _b_lit
+  val    0x00
+  cfa    _b_do
+dtnum1:
+  cfa    _dup
+  cfa    _b_i
+  cfa    _plus
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x02
+  cfa    hexout_
+  cfa    _b_lit
+  val    0x20
+  cfa    _b_emit
+  cfa    _b_loop
+  addr   dtnum1
+  cfa    _drop
+  exit
+
+  nolink
+b_dot_quotes_:
+  thread
+  cfa   _b_r_at
+  cfa   _dup
+  cfa   _one_plus
+  cfa   _swap
+  cfa   _c_at
+  cfa   _dup
+  cfa   _b_r_from
+  cfa   _plus
+  cfa   _one_plus
+  cfa   _align
+  cfa   _b_to_r
+  cfa   type_
+  exit
+
+  nolink
+b_does_code_:  
+  thread
+  cfa    _b_r_from
+  cfa    _d_at
+  cfa    _b_lit
+  val    0x04
+  cfa    _plus
+  cfa    latest_
+  cfa    pfa_
+  cfa    cfa_
+  cfa    _d_store
+  exit
+
+  nolink
+b_compile_:
+  thread
+  cfa    query_comp_
+  cfa    find_
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _zero_
+  cfa    query_error_
+  cfa    d_comma_
+  exit
+
+  nolink
+  nolink
+plus_origin_:
+  thread
+  cfa    _origin_
+  cfa    _plus
+  exit
+
+  nolink
+query_loading_:
+  thread
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _zero_eq
+  cfa    _b_lit
+  val    0x10
+  cfa    query_error_
+  exit
+
+
+  nolink
+query_exec_:
+  thread
+  cfa    _state_
+  cfa    _d_at
+  cfa    _b_lit
+  val    0x12
+  cfa    query_error_    
+  exit
+
+  nolink
+query_pairs_:
+  thread
+  cfa    _minus
+  cfa    _b_lit
+  val    0x13
+  cfa    query_error_
+  exit  
+
+  nolink
+rp_store_:
+  thread
+  cfa    _b_r_from
+  cfa    _r_zero_
+  cfa    _d_at
+  cfa    _b_rp_store
+  cfa    _b_to_r
+  exit
+
+  nolink
+rubout_:
+  thread
+  cfa    _b_lit
+  val    0x0E
+  cfa    plus_origin_
+  cfa    _d_at
+  exit
+
+  nolink
+b_semi_code_:
+  thread
+  cfa    _b_r_from
+  cfa    latest_
+  cfa    pfa_
+  cfa    cfa_
+  cfa    _d_store
+  exit
+
+  nolink
+b_sign_:
+  thread
+  cfa    _swap
+  cfa    _zero_lt
+  cfa    _b_zbranch
+  addr    bsign1
+  cfa    _b_lit
+  val    0x2D
+  cfa    hold_
+bsign1:
+  exit
+
+  nolink
+set_vars_:
+  thread
+  cfa    _operator_
+  cfa    _b_lit
+  val    UVARLEN
+  cfa    _zero_
+  cfa    _fill
+
+  cfa    _b_lit
+  val    vm_vars
+  cfa    _operator_
+  cfa    _b_lit
+  val    0x04
+  cfa    _plus
+  cfa    _b_lit
+  val    0x10
+  cfa    _cmove
+
+  cfa    _b_lit
+  val    0x38
+  cfa    plus_origin_
+  cfa    _d_at
+  cfa    _tick_emit_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    0x40
+  cfa    plus_origin_
+  cfa    _d_at
+  cfa    _device_
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _d_store
+
+  cfa    _b_lit
+  pfa    vec_list_
+  cfa    _tick_message_
+  cfa    _b_lit
+  val    0x20
+  cfa    _cmove
+
+  cfa    _operator_
+  cfa    _b_lit
+  val    0x04
+  cfa    _plus
+  cfa    _d_at
+  cfa    _operator_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    0x08
+  cfa    _dcols_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    0x30
+  cfa    plus_origin_
+  cfa    _d_at
+  cfa    _fence_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    (vm_vars + DP_ADD)
+  cfa    _d_at
+  cfa    _dp_
+  cfa    _d_store
+
+  cfa    first_
+  cfa    _dup
+  cfa    _prev_
+  cfa    _d_store
+  cfa    _use_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    0x10
+  cfa    plus_origin_
+  cfa    _d_at
+  cfa    _tpoint_
+  cfa    _d_store
+
+  cfa    _b_lit
+  val    0x3C
+  cfa    plus_origin_
+  cfa    _d_at
+  cfa    _spoint_
+  cfa    _d_store
+
+  cfa    attila_
+  cfa    definitions_  
+  cfa    ok_
+  exit
+
+  nolink
+sp_store_:
+  thread
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    _b_sp_store
+  exit
+
+  nolink
+turnkey_:	/* called from 'abort' */
+  thread
+  cfa    _b_lit
+  addr    hex_dot_r_
+  cfa    _tick_dot_r_
+  cfa    _d_store
+  exit
+
+  nolink
+vec_list_:
+  thread
+  cfa    b_message_
+  cfa    b_error_
+  cfa    b_cr_
+  cfa    b_page_
+  cfa    _drop
+  cfa    b_abort_
+  cfa    b_quit_
+  cfa    b_cold_
+  exit
+
+
+/* ========= Threaded definitions (common) ========= */
+
+swords:
+  istat  6
+  .ascii "sword"
+  term   's'
+  link   0x0
+swords_:
+  thread
+  cfa    _spoint_
+  cfa    _context_
+  cfa    _d_store
+  exit
+
+attila:
+  istat  6
+  .ascii "attil"
+  term   'a'
+  link   swords
+attila_:
+  thread
+  cfa    _tpoint_
+  cfa    _context_
+  cfa    _d_store
+  exit
+
+
+/* == Sys & User variable definitions (sys words) == */
+
+width:
+  stat  5
+  .ascii  "widt"
+  term  'h'
+  link  x
+_width_:
+  uvar
+  val  20
+
+warning:
+  stat  7
+  .ascii  "warnin"
+  term  'g'
+  link  width
+_warning_:
+  uvar
+  val  28
+
+use:
+  stat 3
+  .ascii "us"
+  term 'e'
+  link  warning
+_use_:
+  svar
+  val 40
+
+tib:
+  stat  3
+  .ascii  "ti"
+  term  'b'
+  link  use
+_tib_:
+  uvar
+  val  16
+
+state:
+  stat  5
+  .ascii  "stat"
+  term  'e'
+  link  tib
+_state_:
+  svar
+  val   68
+
+s_zero:
+  stat  2
+  .ascii  "s"
+  term  '0'
+  link  state
+_s_zero_:
+  uvar
+  val  8
+
+r_zero:
+  stat  2
+  .ascii  "r"
+  term  '0'
+  link  s_zero
+_r_zero_:
+  uvar
+  val   12
+
+r_hash:
+  stat  2
+  .ascii  "r"
+  term  '#'
+  link  r_zero
+_r_hash_:
+  svar
+  val   80
+
+prev:
+  stat  4
+  .ascii  "pre"
+  term  'v'
+  link  r_hash
+_prev_:
+  svar
+  val   92
+
+out:
+  stat  3
+  .ascii  "ou"
+  term  't'
+  link  prev
+_out_:
+  svar
+  val   64
+
+operator:
+  stat  8
+  .ascii  "operato"
+  term  'r'
+  link  out
+_operator_:
+  uvar
+  val   00
+
+offset:
+  stat  6
+  .ascii  "offse"
+  term  't'
+  link  operator
+_offset_:
+  svar
+  val   76
+
+nxt:
+  stat  3
+  .ascii  "nx"
+  term  't'
+  link  offset
+_nxt_:
+  svar
+  val   60
+
+hld:
+  stat  3
+  .ascii  "hl"
+  term  'd'
+  link  nxt
+_hld_:
+  svar
+  val   56
+
+fld:
+  stat 3
+  .ascii "fl"
+  term 'd'
+  link  hld
+_fld_:
+  svar
+  val   44
+
+fence:
+  stat  5
+  .ascii  "fenc"
+  term  'e'
+  link  fld
+_fence_:
+  uvar
+  val  24
+
+dpl:
+  stat  3
+  .ascii  "dp"
+  term  'l'
+  link  fence
+_dpl_:
+  svar
+  val   48
+
+dcols:
+  stat  5
+  .ascii  "dcol"
+  term  's'
+  link  dpl
+_dcols_:
+  svar
+  val   52
+
+csp:
+  stat  3
+  .ascii  "cs"
+  term  'p'
+  link  dcols
+_csp_:
+  svar
+  val   104
+
+blk:
+  stat   3
+  .ascii  "bl"
+  term   'k'
+  link   csp
+_blk_:
+  svar
+  val    88
+
+to_in:
+  stat  3
+  .ascii  ">i"
+  term  'n'
+  link  blk
+_to_in_:
+  svar
+  val   96
+
+
+/* == Sys & User variable definitions (mon words) == */
+
+scr:
+  stat  3
+  .ascii  "sc"
+  term  'r'
+  link  attila
+_scr_:
+  svar
+  val   84
+
+rw:
+  stat   2
+  .ascii "r"
+  term   'w'
+  link   scr
+_rw_:
+  var
+  .ascii "a\000"
+  .align 2,0
+
+rd:
+  stat   2
+  .ascii "r"
+  term   'd'
+  link   rw
+_rd_:
+  var
+  .ascii "r\000"
+  .align 2,0
+
+dp:
+  stat  2
+  .ascii "d"
+  term  'p'
+  link  rd
+_dp_:
+  svar
+  val   100
+
+device:
+  stat  6
+  .ascii  "devic"
+  term  'e'
+  link  dp
+_device_:
+  uvar
+  val  32    /*  !!! 2 cells */
+
+context:
+  stat  7
+  .ascii  "contex"
+  term  't'
+  link  device
+_context_:
+  svar
+  val   108
+
+current:
+  stat  7
+  .ascii  "curren"
+  term  't'
+  link  context
+_current_:
+  svar
+  val   112
+
+base:
+  stat  4
+  .ascii  "bas"
+  term  'e'
+  link  current
+_base_:
+  svar
+  val   72
+
+
+/* ======= Constant definitions (mon words) ======== */
+
+true:
+  stat  4
+  .ascii  "tru"
+  term  'e'
+  link  base
+_true_:
+  const
+  val   0xFFFFFFFF
+
+limit:
+  stat   5
+  .ascii "limi"
+  term   't'
+  link   true
+limit_:
+  const
+  val    limit_buf
+
+false:
+  stat  5
+  .ascii  "fals"
+  term  'e'
+  link  limit
+_false_:
+  const
+  val   0x00
+
+esc:
+  stat  3
+  .ascii  "es"
+  term  'c'
+  link  false
+_esc_:
+  const
+  val   ESC
+
+n_l:
+  stat  3
+  .ascii  "n/"
+  term  'l'
+  link  esc
+_n_l_:
+  const
+  val   ENTER
+
+bl:
+  stat  2
+  .ascii  "b"
+  term  'l'
+  link  n_l
+_bl_:
+  const
+  val   0x20
+
+one:
+  stat  1
+  term  '1'
+  link  bl
+_one_:
+  const
+  val   0x01
+
+zero:
+  stat  1
+  term  '0'
+  link  one
+_zero_:
+  const
+  val   0x00
+
+/* ======= Threaded definitions (sys words) ======== */
+
+vocabulary:
+  istat  10
+  .ascii "vocabular"
+  term   'y'
+  link   to_in
+vocabulary_:
+  thread
+  cfa    create_
+  cfa    latest_
+  cfa    d_comma_
+  cfa    b_semi_code_
+  does_thread
+  cfa    _context_
+  cfa    _d_store
+  exit
+
+sign:
+  istat  4
+  .ascii "sig"
+  term   'n'
+  link   vocabulary
+sign_:
+  thread
+  cfa      compile_
+  cfa      b_sign_
+  exit
+
+pfaddr:
+  stat   3
+  .ascii "pf"
+  term   'a'
+  link   sign
+pfa_:
+  thread
+  cfa    _dup
+  cfa    _c_at
+  cfa    _b_lit
+  val    NWIDTH
+  cfa    _and
+  cfa    _plus
+  cfa    _b_lit
+  val    0x08
+  cfa    _plus
+  cfa    _one_plus
+  cfa    _align
+  exit
+
+pad:
+  stat   3
+  .ascii "pa"
+  term   'd'
+  link   pfaddr
+pad_:
+  thread
+  cfa    here_
+  cfa    _b_lit
+  val    0x40
+  cfa    _plus
+  exit
+
+number:
+  stat   6
+  .ascii "numbe"
+  term   'r'
+  link    pad
+number_:
+  thread
+  cfa    _dup
+  cfa    _one_plus
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x2d
+  cfa    _eq
+  cfa    _swap
+  cfa    _over
+  cfa    _b_zbranch
+  addr    num1  
+  cfa    _one_plus
+num1:
+  cfa    _zero_
+  cfa    _swap
+  cfa    _b_lit
+  val    0xFFFFFFFF
+num2:
+  cfa    _dpl_
+  cfa    _d_store
+  cfa    convert_
+  cfa    _dup
+  cfa    _c_at
+  cfa    _bl_
+  cfa    _over
+  cfa    _minus
+  cfa    _swap
+  cfa    _zero_eq
+  cfa    _not
+  cfa    _and
+  cfa    _b_zbranch
+  addr   num3
+  cfa    _dup
+  cfa    _c_at
+  cfa    _dup
+  cfa    _b_lit
+  val    0x3a
+  cfa    _eq
+  cfa    _swap
+  cfa    _b_lit
+  val    0x2c
+  cfa    _b_lit
+  val    0x30
+  cfa    within_
+  cfa    _plus
+  cfa    _not
+  cfa    _b_lit
+  val    0x00
+  cfa    query_error_
+  cfa    _zero_
+  cfa    _b_branch
+  addr   num2
+num3:
+  cfa    _drop
+  cfa    _swap
+  cfa    _b_zbranch
+  addr   num4
+  cfa    _dnegate
+num4:
+  exit
+
+nfa:
+  stat  3
+  .ascii "nf"
+  term  'a'
+  link  number
+nfa_:
+  thread
+  cfa    _b_lit
+  val    0x09
+  cfa    _minus
+nfa1:
+  cfa    _dup
+  cfa    _c_at
+  cfa    _zero_eq
+  cfa    _b_zbranch
+  addr   nfa2
+  cfa    _one_minus
+  cfa    _b_branch
+  addr   nfa1
+nfa2:
+  cfa    _one_minus
+  cfa    _dup
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x80
+  cfa    _and
+  cfa    _b_zbranch
+  addr   nfa2
+  exit
+
+literal:
+  istat  7
+  .ascii "litera"
+  term   'l'
+  link   nfa
+literal_:
+  thread
+  cfa    compile_
+  cfa    _b_lit
+  cfa    d_comma_
+  exit
+
+lfa:
+  stat   3
+  .ascii "lf"
+  term   'a'
+  link   literal
+lfa_:
+  thread
+  cfa    _b_lit
+  val    0x08
+  cfa    _minus
+  exit
+
+latest:
+  stat   6
+  .ascii "lates"
+  term   't'
+  link   lfa
+latest_:
+  thread
+  cfa    _current_
+  cfa    _d_at
+  cfa    _d_at
+  exit
+
+interpret:
+  stat   9
+  .ascii "interpre"
+  term   't'
+  link   latest
+interpret_:
+  thread
+interpret1:
+  cfa    find_
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   interpret4
+  cfa    _dup
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    nfa_
+  cfa    _c_at
+  cfa    _state_
+  cfa    _d_at
+  cfa    _u_lt
+  cfa    _b_zbranch
+  addr   interpret2
+  cfa    d_comma_
+  cfa    _b_branch
+  addr   interpret3
+interpret2:
+  cfa    _execute
+  cfa    query_stack_
+interpret3:
+  cfa    _b_branch
+  addr   interpret5
+interpret4:
+  cfa    here_
+  cfa    number_
+  cfa    _state_
+  cfa    _d_at
+  cfa    _b_zbranch
+  addr   interpret5
+  cfa    literal_
+interpret5:
+  cfa    _b_branch
+  addr   interpret1
+  exit
+
+immediate:
+  stat   9
+  .ascii "immediat"
+  term   'e'
+  link   interpret
+immediate_:
+  thread
+  cfa    latest_
+  cfa    _b_lit
+  val    0x40
+  cfa    toggle_
+  exit
+
+hold:
+  stat   4
+  .ascii "hol"
+  term   'd'
+  link   immediate
+hold_:
+  thread
+  cfa      _hld_
+  cfa      _dup
+  cfa      _one_decr
+  cfa      _d_at
+  cfa      _c_store
+  exit
+
+dliteral:
+  istat  8
+  .ascii "dlitera"
+  term   'l'
+  link   hold
+dliteral_:
+  thread
+  cfa    compile_
+  cfa    _b_lit
+  cfa    d_comma_
+  exit
+
+definitions:
+  istat  11
+  .ascii "definition"
+  term   's'
+  link   dliteral
+definitions_:
+  thread
+  cfa    _context_
+  cfa    _d_at
+  cfa    _current_
+  cfa    _d_store
+  exit
+
+create:
+  stat   6
+  .ascii "creat"
+  term   'e'
+  link   definitions
+create_:
+  thread
+  cfa    find_
+  cfa    _b_zbranch
+  addr   create1
+  cfa    here_
+  cfa    _u_at
+  cfa    _one_
+  cfa    _eq
+  cfa    _b_lit
+  val    0x1B
+  cfa    query_error_
+  cfa    space_
+  cfa    here_
+  cfa    count_
+  cfa    type_
+  cfa    _b_lit
+  val    0x04
+  cfa    message_
+create1:
+  cfa    here_
+  cfa    _dup
+  cfa    _c_at
+  cfa    _b_lit
+  val    NWIDTH
+  cfa    _min
+  cfa    _dup
+  cfa    _b_to_r
+  cfa    _one_plus
+  cfa    allot_
+  cfa    _b_r_from
+  cfa    _b_lit
+  val    0x80
+  cfa    _or
+  cfa    _over
+  cfa    _c_store
+  cfa    here_
+  cfa    _one_minus
+  cfa    _b_lit
+  val    0x80
+  cfa    toggle_
+  cfa    here_
+  cfa    _zero_
+  cfa    comma_
+  cfa    _zero_
+  cfa    comma_
+  cfa    _dp_
+  cfa    _d_store
+/* align LFA (& hence CFA) */
+  cfa    here_
+/* !!!  cfa	 _one_minus */
+  cfa    _align
+  cfa    _dp_
+  cfa    _d_store
+  cfa    latest_
+  cfa    d_comma_
+  cfa    _current_
+  cfa    _d_at
+  cfa    _d_store
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    b_does_code_
+  cfa    _b_dovar
+  exit
+
+convert:
+  stat   7
+  .ascii "conver"
+  term   't'
+  link   create
+convert_:
+  thread
+convt1:
+  cfa    _one_plus
+  cfa    _dup
+  cfa    _c_at
+  cfa    _base_
+  cfa    _d_at
+  cfa    _digit
+  cfa    _b_zbranch
+  addr   convt3
+  cfa    _rot
+  cfa    _base_
+  cfa    _d_at
+  cfa    _u_star
+  cfa    _plus
+  cfa    _swap
+  cfa    _dpl_
+  cfa    _d_at
+  cfa    _one_plus
+  cfa    _b_zbranch
+  addr   convt2   
+  cfa    _one_
+  cfa    _dpl_
+  cfa    _dplus_store 
+convt2:
+  cfa    _b_branch
+  addr   convt1    
+convt3:
+  exit
+
+compile:
+  stat   7
+  .ascii "compil"
+  term   'e'
+  link   convert
+compile_:
+  thread
+  cfa    query_comp_
+  cfa    _b_r_from
+  cfa    _dup
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _b_to_r
+  cfa    _d_at
+  cfa    d_comma_
+  exit
+
+cfaddr:
+  stat   3
+  .ascii "cf"
+  term   'a'
+  link   compile
+cfa_:
+  thread
+  cfa    _two_minus
+  cfa    _two_minus
+  exit
+
+end_sq_bracket:
+  istat  1
+  term   ']'
+  link   cfaddr
+end_sq_bracket_:
+  thread
+  cfa    query_exec_
+  cfa    _b_lit
+  val    0xC0
+  cfa    _state_
+  cfa    _d_store
+  exit
+
+x_compile:
+  istat  9
+  .ascii "[compile"
+  term   ']'
+  link   end_sq_bracket
+x_compile_:
+  thread
+  cfa    query_comp_
+  cfa    find_
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _zero_
+  cfa    query_error_
+  cfa    d_comma_
+  exit
+
+sq_bracket:
+  istat  1
+  term   '['
+  link   x_compile
+sq_bracket_:
+  thread
+  cfa    query_comp_
+  cfa    _zero_
+  cfa    _state_
+  cfa    _d_store
+  exit
+
+query_error:
+  stat   6
+  .ascii "?erro"
+  term   'r'
+  link   sq_bracket
+query_error_:
+  thread
+  cfa    _swap
+  cfa    _b_zbranch
+  addr   qry_err1
+  cfa    error_
+  cfa    _b_branch
+  addr   qry_err2
+qry_err1:
+  cfa    _drop
+qry_err2:
+  exit
+
+query_delim:
+  stat   6
+  .ascii "?deli"
+  term   'm'
+  link   query_error
+query_delim_:
+  thread
+  cfa    here_
+  cfa    _dup
+  cfa    _c_at
+  cfa    _plus
+  cfa    _one_plus
+  cfa    _c_at
+  cfa    _minus
+  cfa    _b_lit
+  val    0x1B
+  cfa    query_error_
+  exit
+
+query_csp:
+  istat  4
+  .ascii "?cs"
+  term   'p'
+  link   query_delim
+query_csp_:
+  thread
+  cfa    _b_sp_at
+  cfa    _csp_
+  cfa    _d_at
+  cfa    _minus
+  cfa    _b_lit
+  val    0x14
+  cfa    query_error_
+  exit
+
+query_comp:
+  stat   5
+  .ascii "?com"
+  term   'p'
+  link   query_csp
+query_comp_:
+  thread
+  cfa    _state_
+  cfa    _d_at
+  cfa    _zero_eq
+  cfa    _b_lit
+  val    0x11
+  cfa    query_error_    
+  exit
+
+angle_hash:
+  stat   2
+  .ascii "<"
+  term   '#'
+  link   query_comp
+angle_hash_:
+  thread
+  cfa      pad_
+  cfa      _hld_
+  cfa      _d_store
+  exit
+
+hash_s:
+  stat   2
+  .ascii "#"
+  term   's'
+  link   angle_hash
+hash_s_:
+  thread
+hash_s1:
+  cfa    hash_
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _b_zbranch
+  addr   hash_s1
+  exit
+
+hash_angle:
+  stat   2
+  .ascii "#"
+  term   '>'
+  link   hash_s
+hash_angle_:
+  thread
+  cfa    _drop
+  cfa    _hld_
+  cfa    _d_at
+  cfa    pad_
+  cfa    _over
+  cfa    _minus
+  exit
+
+hash:
+  stat   1
+  term   '#'
+  link   hash_angle
+hash_:
+  thread
+  cfa    _base_
+  cfa    _d_at
+  cfa    m_div_mod_
+  cfa    _swap
+  cfa    _b_lit
+  val    0x09
+  cfa    _over
+  cfa    _lt
+  cfa    _b_zbranch
+  addr    hash1
+  cfa    _b_lit
+  val    0x07
+  cfa    _plus
+hash1:
+  cfa    _b_lit
+  val    0x30
+  cfa    _plus
+  cfa    hold_
+  exit
+
+b_dot_r:
+  stat   4
+  .ascii "(.r"
+  term   ')'
+  link   hash
+b_dot_r_:	/* n r -> */
+  thread
+  cfa    _b_to_r
+  cfa    _dup
+  cfa    _abs
+  cfa    angle_hash_
+  cfa    hash_s_
+  cfa    b_sign_
+  cfa    hash_angle_
+  cfa    _b_r_from
+  cfa    _over
+  cfa    _minus
+  cfa    spaces_
+  cfa    type_
+  exit
+
+store_csp:
+  istat  4
+  .ascii "!cs"
+  term   'p'
+  link   b_dot_r
+store_csp_:
+  thread
+  cfa    _b_sp_at
+  cfa    _csp_
+  cfa    _d_store
+  exit
+
+
+/* ======= Threaded definitions (mon words) ======== */
+
+words:
+  stat   5
+  .ascii "word"
+  term   's'
+  link   zero
+words_:
+  thread
+  cfa    _zero_
+  cfa    _context_
+  cfa    _d_at
+  cfa    _d_at
+  cfa    b_dot_quotes_
+  len    15
+  .ascii "(\'@\' key quits)"
+  .align 2,0
+  cfa    cr_
+words1:
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   words6
+  cfa    _dup
+  cfa    _c_at
+  cfa    _b_lit
+  val    NWIDTH
+  cfa    _and
+  cfa    _over
+  cfa    _over
+  cfa    _plus
+  cfa    _one_plus
+  cfa    _align
+  cfa    _b_to_r
+  cfa    _swap
+  cfa    _one_plus
+  cfa    _swap
+  cfa    type_
+  cfa    space_
+  cfa    _one_plus
+  cfa    _dup
+  cfa    _b_lit
+  val    0x06
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   words4
+  cfa    key_
+  cfa    _b_lit
+  val    ESC
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   words2
+  cfa    _b_r_from
+  cfa    _drop
+  cfa    _zero_
+  cfa    _b_branch
+  addr   words3
+words2:
+  cfa    cr_
+  cfa    _drop
+  cfa    _zero_
+  cfa    _b_r_from
+  cfa    _d_at
+words3:
+  cfa    _b_branch
+  addr   words5
+words4:
+  cfa    _b_r_from
+  cfa    _d_at
+words5:
+  cfa    _b_branch
+  addr   words1
+words6:
+  cfa    _two_drop
+  exit
+
+word:
+  stat   4
+  .ascii "wor"
+  term   'd'
+  link   words
+word_:
+  thread
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   word1
+  cfa    block_
+  cfa    _b_branch
+  addr   word2
+word1:
+  cfa    _tib_
+  cfa    _d_at
+word2:
+  cfa    _to_in_
+  cfa    _d_at
+  cfa    _plus
+  cfa    _swap
+  cfa    _enclose
+  cfa    _to_in_
+  cfa    _dplus_store 
+  cfa    _over
+  cfa    _minus
+  cfa    _b_to_r
+  cfa    _b_r_at
+  cfa    here_
+  cfa    _c_store
+  cfa    _plus
+  cfa    here_
+  cfa    _one_plus
+  cfa    _b_r_from
+  cfa    _one_plus
+  cfa    _cmove
+  cfa    here_
+  exit
+
+within:
+  stat   6
+  .ascii "withi"
+  term   'n'
+  link   word
+within_:
+  thread
+  cfa    _b_to_r
+  cfa    _one_minus
+  cfa    _over
+  cfa    _u_lt
+  cfa    _swap
+  cfa    _b_r_from
+  cfa    _u_lt
+  cfa    _and
+  exit
+
+while:
+  istat  5
+  .ascii "whil"
+  term   'e'
+  link   within
+while_:
+  thread
+  cfa    if_
+  cfa    _two_plus
+  exit  
+
+variable:
+  stat   8
+  .ascii "variabl"
+  term   'e'
+  link   while
+variable_:
+  thread
+  cfa    create_
+  cfa    _zero_
+  cfa    d_comma_
+  exit
+
+user:
+  stat   4
+  .ascii "use"
+  term   'r'
+  link   variable
+user_:
+  thread
+  cfa    constant_
+  cfa    b_does_code_
+  cfa    _b_douse
+  exit
+
+until:
+  istat  5
+  .ascii "unti"
+  term   'l'
+  link   user
+until_:
+  thread
+  cfa    _one_
+  cfa    query_pairs_
+  cfa    compile_
+  cfa    _b_zbranch
+  cfa    back_
+  exit  
+
+u_d_query:
+  stat   3
+  .ascii "ud"
+  term   '?'
+  link   until
+u_d_query_:	/* addr -> */
+  thread
+  cfa      _d_at
+  cfa      u_dot_
+  exit
+
+u_query_symb:
+  stat   2
+  .ascii "u"
+  term   '?'
+  link   u_d_query
+u_query_symb_:	/* addr -> */
+  thread
+  cfa      _u_at
+  cfa      u_dot_
+  exit
+
+u_div_mod:
+  stat   5
+  .ascii "u/mo"
+  term   'd'
+  link   u_query_symb
+u_div_mod_:
+  thread
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   udivmod1
+/* !!! handle unsigned mdiv ? */
+  cfa    _mdiv_mod
+  cfa    _b_branch
+  addr   udivmod2
+udivmod1:
+  cfa    _one_plus
+  cfa    _b_lit
+  val    0x0A
+  cfa    query_error_
+udivmod2:
+  exit
+
+u_dot:
+  stat   2
+  .ascii "u"
+  term   '.'
+  link   u_div_mod
+u_dot_:
+  thread
+  cfa    angle_hash_
+  cfa    hash_s_
+  cfa    hash_angle_
+  cfa    type_
+  cfa    space_
+  exit
+
+type:
+  stat   4
+  .ascii "typ"
+  term   'e'
+  link   u_dot
+type_:
+  thread
+  cfa    _zero_
+  cfa    _max
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   type2
+  cfa    _over
+  cfa    _plus
+  cfa    _swap
+  cfa    _b_do
+type1:
+  cfa    _b_i
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x7F
+  cfa    _and
+  cfa    emit_
+  cfa    _b_loop
+  addr   type1
+  cfa    _b_branch
+  addr   type3
+type2:
+  cfa    _drop
+type3:
+  exit
+
+minus_trailing:
+  stat  9
+  .ascii "-trailin"
+  term   'g'
+  link   type
+minus_trailing_:
+  thread
+  cfa    _dup
+  cfa    _zero_lt
+  cfa    _b_lit
+  val    0x19
+  cfa    query_error_
+  cfa    _dup
+  cfa    _zero_
+  cfa    _b_do
+mtrl1:
+  cfa    _over
+  cfa    _over
+  cfa    _plus
+  cfa    _one_minus
+  cfa    _c_at
+  cfa    _bl_
+  cfa    _minus
+  cfa    _b_zbranch
+  addr   mtrl2
+  cfa    _b_leave
+  cfa    _b_branch
+  addr   mtrl3
+mtrl2:
+  cfa    _one_minus
+mtrl3:
+  cfa    _b_loop
+  addr   mtrl1
+  exit
+
+toggle:
+  istat  6
+  .ascii "toggl"
+  term   'e'
+  link   minus_trailing
+toggle_:
+  thread
+  cfa    _over
+  cfa    _c_at
+  cfa    _xor
+  cfa    _swap
+  cfa    _c_store
+  exit
+
+then:
+  istat  4
+  .ascii "the"
+  term   'n'
+  link   toggle
+then_:
+  thread
+  cfa    query_comp_
+  cfa    _b_lit
+  val    0x02
+  cfa    query_pairs_
+  cfa    here_
+  cfa    _swap
+  cfa    _d_store
+  exit  
+
+spaces:
+  stat   6
+  .ascii "space"
+  term   's'
+  link   then
+spaces_:  
+  thread
+  cfa    _zero_
+  cfa    _max
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   spaces2
+  cfa    _zero_
+  cfa    _b_do
+spaces1:
+  cfa    space_
+  cfa    _b_loop
+  addr   spaces1
+spaces2:
+  exit
+
+space:
+  stat   5
+  .ascii "spac"
+  term   'e'
+  link   spaces
+space_:
+  thread
+  cfa    _bl_
+  cfa    emit_
+  exit
+
+smudge:
+  stat   6
+  .ascii "smudg"
+  term   'e'
+  link   space
+smudge_:
+  thread
+  cfa    latest_
+  cfa    _b_lit
+  val    0x20
+  cfa    toggle_
+  exit
+
+roll:
+  stat  4
+  .ascii "rol"
+  term   'l'
+  link   smudge
+roll_:
+  thread
+  cfa    _dup
+  cfa    _one_
+  cfa    _lt
+  cfa    _b_lit
+  val    0x0B
+  cfa    query_error_
+  cfa    _dup
+  cfa    _one_plus
+  cfa    _b_pick
+  cfa    _b_to_r
+  cfa    _b_to_r
+  cfa    _b_sp_at
+  cfa    _dup
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _b_r_from
+  cfa    _one_minus
+  cfa    _two_star
+  cfa    _two_star
+  cfa    _down_cmove
+  cfa    _drop
+  cfa    _b_r_from
+  exit
+
+repeat:
+  istat  6
+  .ascii "repea"
+  term   't'
+  link   roll
+repeat_:
+  thread
+  cfa    _b_to_r
+  cfa    _b_to_r
+  cfa    again_
+  cfa    _b_r_from
+  cfa    _b_r_from
+  cfa    _two_minus
+  cfa    then_
+  exit  
+
+r_at:
+  istat  2
+  .ascii "r"
+  term   '@'
+  link   repeat
+r_at_:
+  thread
+  cfa    compile_
+  cfa    _b_r_at
+  exit
+
+r_from:
+  istat  2
+  .ascii "r"
+  term   '>'
+  link   r_at
+r_from_:
+  thread
+  cfa    compile_
+  cfa    _b_r_from
+  exit
+
+quit:
+  stat    4
+  .ascii  "qui"
+  term    't'
+  link    r_from
+quit_:
+  thread
+  cfa     _tick_quit_
+  cfa     _d_at
+  cfa     _execute
+  exit
+
+b_quit:
+  stat    6
+  .ascii  "(quit"
+  term    ')'
+  link    quit
+b_quit_:
+  thread
+  cfa    _zero_
+  cfa    _blk_
+  cfa    _d_store
+  cfa    _zero_
+  cfa    _state_
+  cfa    _d_store
+quit1:
+  cfa    rp_store_
+  cfa    cr_
+  cfa    query_
+  cfa    interpret_
+  cfa    _state_
+  cfa    _d_at
+  cfa    _zero_eq
+  cfa    _b_zbranch
+  addr   quit2
+  cfa    b_dot_quotes_
+  len    3
+  .ascii " ok"
+  .align 2,0
+quit2:
+  cfa    _b_branch
+  addr   quit1
+  exit
+
+query:
+  stat   5
+  .ascii "quer"
+  term   'y'
+  link   quit
+query_:
+  thread
+  cfa    _tib_
+  cfa    _d_at
+  cfa    _b_lit
+  val    0x50
+  cfa    expect_
+  cfa    _zero_
+  cfa    _to_in_
+  cfa    _d_store
+  exit
+
+pick:
+  stat   4
+  .ascii "pic"
+  term   'k'
+  link   query
+pick_:
+  thread
+  cfa    _dup
+  cfa    _one_
+  cfa    _lt
+  cfa    _b_lit
+  val    0x0B
+  cfa    query_error_
+  cfa    _b_pick
+  exit
+
+page:
+  stat   4
+  .ascii "pag"
+  term   'e'
+  link   pick
+page_:
+  thread
+  cfa    _tick_page_
+  cfa    _d_at
+  cfa    _execute
+  exit  
+
+b_page:
+  stat   6
+  .ascii "(page"
+  term   ')'
+  link   page
+b_page_:
+  thread
+  cfa    b_dot_quotes_
+  len    7
+  .byte  0x1B
+  .byte  0x5B
+  .byte  0x48
+  .byte  0x1B
+  .byte  0x5B
+  .byte  0x32
+  .byte  0x4A
+  .align 2,0
+  exit  
+
+ok:
+  stat   2
+  .ascii "o"
+  term   'k'
+  link   b_page
+ok_:
+  thread
+  cfa    _tick_emit_
+  cfa    _d_at
+  cfa    _device_
+  cfa    _d_store
+  exit
+
+mod:
+  stat   3
+  .ascii "mo"
+  term   'd'
+  link   ok
+mod_:
+  thread
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   mod1
+  cfa    _mdiv_mod
+  cfa    _drop
+  cfa    _b_branch
+  addr   mod2
+mod1:
+  cfa    _one_plus
+  cfa    _b_lit
+  val    0x0A
+  cfa    query_error_
+mod2:
+  exit
+
+b_message:
+  stat   9
+  .ascii "(message"
+  term   ')'
+  link   mod
+b_message_:
+  thread
+  cfa    _dup
+  cfa    _b_lit
+  val    0x00
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg1 
+  cfa    b_dot_quotes_
+  len    15
+  .ascii " word not found"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg1:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x01
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg2
+  cfa    b_dot_quotes_
+  len    16
+  .ascii " stack underflow"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg2:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x02
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg4
+  cfa    b_dot_quotes_
+  len    25
+  .ascii " stack/dictionary overlap"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg4:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x04
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg7
+  cfa    b_dot_quotes_
+  len    13
+  .ascii " word renamed"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg7:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x07
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg10
+  cfa    b_dot_quotes_
+  len    29
+  .ascii " dictionary approaching stack"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg10:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x0a
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg17
+  cfa    b_dot_quotes_
+  len    14
+  .ascii " dividing by 0"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg17:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x11
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg18
+  cfa    b_dot_quotes_
+  len    20
+  .ascii " not in compile mode"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg18:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x12
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg19
+  cfa    b_dot_quotes_
+  len    20
+  .ascii " not in execute mode"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg19:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x13
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg20
+  cfa    b_dot_quotes_
+  len    19
+  .ascii " construct mismatch"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg20:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x14
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg21
+  cfa    b_dot_quotes_
+  len    25
+  .ascii " construct/stack mismatch"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg21:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x15
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg22
+  cfa    b_dot_quotes_
+  len    21
+  .ascii " protected by \'fence\'"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg22:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x16
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg27
+  cfa    b_dot_quotes_
+  len    27
+  .ascii " context and current differ"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg27:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x1b
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   msg98
+  cfa    b_dot_quotes_
+  len    17
+  .ascii " argument missing"
+  .align 2,0
+  cfa    _b_branch
+  addr   msg99
+msg98:
+  cfa    _dup
+  cfa    b_dot_quotes_
+  len    8
+  .ascii " error: "
+  .align 2,0
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+msg99:
+  cfa    _drop
+  exit
+
+message:
+  stat   7
+  .ascii "messag"
+  term   'e'
+  link   b_message
+message_:
+  thread
+  cfa    _tick_message_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+m_div_mod:
+  stat   5
+  .ascii "m/mo"
+  term   'd'
+  link   message
+m_div_mod_:
+  thread
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   mdivmod1
+  cfa    _mdiv_mod
+  cfa    _b_branch
+  addr   mdivmod2
+mdivmod1:
+  cfa    _one_plus
+  cfa    _b_lit
+  val    0x0A
+  cfa    query_error_
+mdivmod2:
+  exit
+
+loop:
+  istat  4
+  .ascii "loo"
+  term   'p'
+  link   m_div_mod
+loop_:
+  thread
+  cfa    _b_lit
+  val    0x03
+  cfa    query_pairs_
+  cfa    compile_
+  cfa    _b_loop
+  cfa    back_
+  exit
+
+plus_loop:
+  istat  5
+  .ascii "+loo"
+  term   'p'
+  link   loop
+plus_loop_:
+  thread
+  cfa    _b_lit
+  val    0x03
+  cfa    query_pairs_
+  cfa    compile_
+  cfa    _b_plus_loop
+  cfa    back_
+  exit
+
+loadstr:
+  stat   7
+  .ascii "loadst"
+  term   'r'
+  link   plus_loop
+_loadpath_:
+  thread
+  cfa    b_dot_quotes_
+  len    37
+  .ascii "fcb loadfile /media/mmc1/loadfile.txt"
+  .align 2,0
+  exit
+
+load:
+  stat  4
+  .ascii "loa"
+  term   'd'
+  link   loadstr
+load_:
+  thread
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _b_to_r
+  cfa    _to_in_
+  cfa    _d_at
+  cfa    _b_to_r
+  cfa    _zero_
+  cfa    _to_in_
+  cfa    _d_store
+  cfa    _blk_
+  cfa    _d_store
+  cfa    interpret_
+  cfa    _b_r_from
+  cfa    _to_in_
+  cfa    _d_store
+  cfa    _b_r_from
+  cfa    _blk_
+  cfa    _d_store
+  exit
+
+list:
+  stat  4
+  .ascii "lis"
+  term   't'
+  link   load
+list_:
+  thread
+  cfa    _dup
+  cfa    _scr_
+  cfa    _d_store
+  cfa    _b_lit
+  val    0x10
+  cfa    _zero_
+  cfa    _b_do
+lst1:
+  cfa    cr_
+  cfa    _b_i
+  cfa    _over
+  cfa    dot_line_
+  cfa    _b_loop
+  addr   lst1
+  cfa    _drop
+  exit
+
+dot_line:
+  stat  5
+  .ascii ".lin"
+  term   'e'
+  link   list
+dot_line_:
+  thread
+  cfa    b_line_
+  cfa    minus_trailing_
+  cfa    type_
+  exit
+
+b_line:
+  stat  6
+  .ascii "(line"
+  term   ')'
+  link   dot_line
+b_line_:
+  thread
+  cfa    block_
+  cfa    _swap
+  cfa    _cl_
+  cfa    _u_star
+  cfa    _plus
+  cfa    _cl_
+  exit
+
+leave:
+  istat  5
+  .ascii "leav"
+  term   'e'
+  link   b_line
+leave_:
+  thread
+  cfa    compile_
+  cfa    _b_leave
+  exit
+
+key:
+  stat   3
+  .ascii "ke"
+  term   'y'
+  link   leave
+key_:
+  thread
+  cfa    _device_
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+j:
+  istat  1
+  term   'j'
+  link   key
+j_:
+  thread
+  cfa    compile_
+  cfa    _b_j
+  exit
+
+if:
+  istat  2
+  .ascii "i"
+  term   'f'
+  link   j
+if_:
+  thread
+  cfa    compile_
+  cfa    _b_zbranch
+  cfa    here_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _b_lit
+  val    0x02
+  exit  
+
+iprime:
+  istat  2
+  .ascii "i"
+  term   '\''
+  link   if
+i_prime:
+  thread
+  cfa    compile_
+  cfa    _b_j
+  exit
+
+i:
+  istat  1
+  term   'i'
+  link   iprime
+i_:
+  thread
+  cfa    compile_
+  cfa    _b_i
+  exit
+
+hex:    
+  stat   3
+  .ascii "he"
+  term   'x'
+  link   i
+hex_:
+  thread
+  cfa    _b_lit
+  val    0x10
+  cfa    _base_
+  cfa    _d_store
+  exit
+
+here:
+  stat   4
+  .ascii "her"
+  term   'e'
+  link   hex
+here_:
+  thread
+  cfa    _dp_
+  cfa    _d_at
+  exit
+
+forget:
+  stat   6
+  .ascii "forge"
+  term   't'
+  link   here
+forget_:
+  thread
+  cfa    _current_
+  cfa    _d_at
+  cfa    _context_
+  cfa    _d_at
+  cfa    _minus
+  cfa    _b_lit
+  val    0x16
+  cfa    query_error_
+  cfa    query_exec_
+  cfa    find_
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   forget1
+  cfa    here_
+  cfa    _u_at
+  cfa    _b_lit
+  val    0x0100
+  cfa    _eq
+  cfa    _b_lit
+  val    0x1B
+  cfa    query_error_
+  cfa    _b_branch
+  addr   forget2
+forget1:
+  cfa    _one_plus
+  cfa    _zero_
+  cfa    query_error_
+forget2:
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _dup
+  cfa    _fence_
+  cfa    _d_at
+  cfa    _u_lt
+  cfa    _b_lit
+  val    0x15
+  cfa    query_error_
+  cfa    _dup
+  cfa    nfa_
+  cfa    _dp_
+  cfa    _d_store
+  cfa    lfa_
+  cfa    _d_at
+  cfa    _current_
+  cfa    _d_at
+  cfa    _d_store
+  exit
+
+first:
+  stat   5
+  .ascii "firs"
+  term   't'
+  link   forget
+first_:
+  thread
+  cfa    _himem_
+  cfa    _bbuf_
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _nbufrs_
+  cfa    _u_star
+  cfa    _minus
+  cfa    _two_plus
+  cfa    _two_plus
+  exit
+
+find:
+  stat   4
+  .ascii "fin"
+  term   'd'
+  link   first
+find_:
+  thread
+  cfa    _bl_
+  cfa    word_
+  cfa    _context_
+  cfa    _d_at
+  cfa    _d_at
+  cfa    _b_find
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _b_zbranch
+  addr   fnd1
+  cfa    _context_
+  cfa    _d_at
+  cfa    _current_
+  cfa    _d_at
+  cfa    _minus
+  cfa    _b_zbranch
+  addr   fnd1
+  cfa    _drop
+  cfa    here_
+  cfa    latest_
+  cfa    _b_find
+fnd1:
+  exit
+
+file:
+  stat   4
+  .ascii "fil"
+  term   'e'
+  link   find
+file_:
+  thread	/*  fcbname openmode ->  */
+  cfa    _swap
+  cfa    _b_to_r
+  cfa    _c_at
+  cfa    _b_r_at
+  cfa    _fcb_mode_
+  cfa    _c_store
+  cfa    _b_r_at
+  cfa    _fcb_name_
+  cfa    _b_r_at
+  cfa    _fcb_mode_
+  cfa    _fopen
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _b_lit
+  val    0x20
+  cfa    query_error_
+  cfa    _b_r_at
+  cfa    _fcb_fp_
+  cfa    _d_store
+  cfa    _one_
+  cfa    buffer_
+  cfa    _b_r_at
+  cfa    _over
+  cfa    _two_minus
+  cfa    _two_minus
+  cfa    _d_store
+  cfa    _dup
+  cfa    _b_r_at
+  cfa    _fcb_buf_
+  cfa    _d_store
+  cfa    _zero_
+  cfa    _over
+  cfa    _bbuf_
+  cfa    blanks_
+fil1:
+  cfa    _b_r_at
+  cfa    _fcb_fp_
+  cfa    _d_at
+  cfa    _fgetc
+  cfa    _b_lit
+  val    0xFFFFFFFF
+  cfa    _over
+  cfa    _minus
+  cfa    _b_zbranch
+  addr   fil4
+  cfa    _dup
+  cfa    _bl_
+  cfa    _lt
+  cfa    _b_zbranch
+  addr   fil2
+  cfa    _n_l_
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   fil3
+  cfa    _drop
+  cfa    _cl_
+  cfa    _plus
+  cfa    _zero_
+  cfa    _b_branch
+  addr   fil3
+fil2:
+  cfa    _b_to_r
+  cfa    _over
+  cfa    _over  
+  cfa    _plus
+  cfa    _b_r_from
+  cfa    _swap
+  cfa    _c_store
+  cfa    _one_plus
+  cfa    _cl_
+  cfa    _one_minus
+  cfa    _min
+fil3:
+  cfa    _b_branch
+  addr   fil1
+fil4:
+  cfa    _drop
+  cfa    _two_drop
+  cfa    _b_r_at
+  cfa    _fcb_fp_
+  cfa    _d_at
+  cfa    _fclose
+  cfa    _zero_
+  cfa    _b_r_from
+  cfa    _fcb_fp_
+  cfa    _d_store
+  exit
+
+fcb_offs:
+  stat   8 
+  .ascii "fcb_off"
+  term   's'
+  link   file
+fcb_offs_:
+  thread
+  cfa    create_
+  cfa    d_comma_
+  cfa    b_semi_code_
+_fcb_offs:
+  does_thread
+  cfa    _d_at
+  cfa    _plus
+  exit
+
+fcb_name:
+  stat   8
+  .ascii "fcb_nam"
+  term   'e'
+  link   fcb_offs
+_fcb_name_:
+  addr   _fcb_offs
+  val    0x14
+
+fcb_mode:
+  stat   8
+  .ascii "fcb_mod"
+  term   'e'
+  link   fcb_name
+_fcb_mode_:
+  addr   _fcb_offs
+  val    0x04
+
+fcb_fp:
+  stat   6
+  .ascii "fcb_f"
+  term   'p'
+  link   fcb_mode
+_fcb_fp_:
+  addr   _fcb_offs
+  val    0x08
+
+fcb_buf:
+  stat   7
+  .ascii "fcb_bu"
+  term   'f'
+  link   fcb_fp
+_fcb_buf_:
+  addr   _fcb_offs
+  val    0x00
+
+fcb:
+  stat   3
+  .ascii "fc"
+  term   'b'
+  link   fcb_buf
+fcb_:
+  thread
+  cfa    create_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _b_lit
+  val    0x0FCB0000
+  cfa    d_comma_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _bl_
+  cfa    word_
+  cfa    _one_plus
+  cfa    _dup
+  cfa    _one_minus
+  cfa    _dup
+  cfa    _c_at
+  cfa    _dup
+  cfa    _b_to_r
+  cfa    _cmove
+  cfa    _b_r_from
+  cfa    allot_
+  cfa    _zero_
+  cfa    c_comma_
+  cfa    here_
+  cfa    _align
+  cfa    _dp_
+  cfa    _d_store
+  cfa    b_semi_code_
+_fcb:
+  does_thread
+  cfa    _dup
+  cfa    _fcb_buf_
+  cfa    _d_at
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   fcb1
+  cfa    _prev_
+  cfa    _d_store
+fcb1:
+  exit
+
+f2i:
+  stat   3
+  .ascii "f2"
+  term   'i'
+  link   fcb
+f2i_:
+  thread
+  cfa    _dup
+  cfa    _b_lit
+  val    0x80000000
+  cfa    _and
+  cfa    _b_to_r
+  cfa    _dup
+  cfa    _b_lit
+  val    0x40000000
+  cfa    _and
+  cfa    _b_zbranch
+  addr   f2i2
+  cfa    _dup
+  cfa    _b_lit
+  val    0x3F000000
+  cfa    _and
+  cfa    _rshift16
+  cfa    _swap_bytes
+  cfa    _b_to_r
+  cfa    _dup
+  cfa    _b_lit
+  val    0x00800000
+  cfa    _and
+  cfa    _not
+  cfa    _b_to_r
+  cfa    _b_lit
+  val    0x00FFFFFF
+  cfa    _and
+  cfa    _b_r_from
+  cfa    _b_zbranch
+  addr   f2i1
+  cfa    _b_lit
+  val    0x00800000
+  cfa    _or
+  cfa    _two_div
+f2i1:
+  cfa    _b_lit
+  val    0x0A
+  cfa    _b_r_from
+  cfa    _minus
+  cfa    _two_star
+/*  cfa    _rshift_n  !!! */
+  cfa    _one_plus
+  cfa    _two_div
+  cfa    _b_branch
+  addr   f2i5
+f2i2:
+  cfa    _b_lit
+  val    0x3FFFFFFF
+  cfa    _and
+  cfa    _dup
+  cfa    _b_lit
+  val    0x3F000000
+  cfa    _lt
+  cfa    _b_zbranch
+  addr   f2i3
+  cfa    _drop
+  cfa    _zero_
+  cfa    _b_branch
+  addr   f2i5
+f2i3:
+  cfa    _b_lit
+  val    0x3FC00000
+  cfa    _lt
+  cfa    _b_zbranch
+  addr   f2i4
+  cfa    _one_
+  cfa    _b_branch
+  addr   f2i5
+f2i4:
+  cfa    _b_lit
+  val    0x02
+f2i5:
+  cfa    _b_r_from
+  cfa    _b_zbranch
+  addr   f2i6
+  cfa    _dnegate
+f2i6:
+  exit
+  
+
+expect:
+  stat   6
+  .ascii "expec"
+  term   't'
+  link   f2i
+expect_:
+  thread
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   expect8
+  cfa    _over
+  cfa    _plus
+  cfa    _over
+  cfa    _b_do
+expect1:
+  cfa    key_
+  cfa    _dup
+  cfa    _rubout_
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   expect4
+  cfa    _drop
+  cfa    _dup
+  cfa    _b_i
+  cfa    _eq
+  cfa    _not
+  cfa    _b_zbranch
+  addr   expect2
+  cfa    _bs_
+  cfa    _dup
+  cfa    emit_
+  cfa    space_
+  cfa    _zero_
+  cfa    _b_branch
+  addr   expect3
+expect2:
+  cfa    _b_lit
+  val    0x07
+  cfa    _b_lit
+  val    0x01
+expect3:
+  cfa    _b_r_from
+  cfa    _two_minus
+  cfa    _plus
+  cfa    _b_to_r
+  cfa    _b_branch
+  addr   expect7
+expect4:
+  cfa    _dup
+  cfa    _n_l_
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   expect5
+  cfa    _b_leave
+  cfa    _drop
+  cfa    _bl_
+  cfa    _zero_
+  cfa    _b_branch
+  addr   expect6
+expect5:
+  cfa    _dup
+expect6:
+  cfa    _b_i
+  cfa    _c_store
+  cfa    _zero_
+  cfa    _b_i
+  cfa    _one_plus
+  cfa    _store
+expect7:
+  cfa    emit_
+  cfa    _b_loop
+  addr   expect1
+  cfa    _b_branch
+  addr   expect9
+expect8:
+  cfa    _drop
+expect9:
+  cfa    _drop
+  exit
+
+exit:
+  istat  4
+  .ascii "exi"
+  term   't'
+  link   expect
+exit_:
+  thread
+  cfa    compile_
+  cfa    _b_semi_s
+  exit
+
+error:
+  stat   5
+  .ascii "erro"
+  term   'r'
+  link   exit
+error_:
+  thread
+  cfa    _tick_error_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+b_error:
+  stat   7
+  .ascii "(error"
+  term   ')'
+  link   error
+b_error_:
+  thread
+  cfa    _warning_
+  cfa    _d_at
+  cfa    _zero_lt
+  cfa    _b_zbranch
+  addr   error1
+  cfa    abort_
+error1:
+  cfa    bell_
+  cfa    _dup
+  cfa    _b_lit
+  val    0x07
+  cfa    _eq
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    here_
+  cfa    _b_lit
+  val    0x28
+  cfa    _plus
+  cfa    _u_lt
+  cfa    _and
+  cfa    _b_zbranch
+  addr   error2
+  cfa    _drop
+  cfa    cr_
+  cfa    _b_lit
+  val    0x02
+  cfa    message_
+  cfa    b_dot_quotes_
+  len    33
+  .ascii " - press any key for cold restart"
+  .align 2,0
+  cfa    key_
+  cfa    cold_
+error2:
+  cfa    space_
+  cfa    here_
+  cfa    count_
+  cfa    type_
+  cfa    b_dot_quotes_
+  len    3
+  .ascii " ? "
+  .align 2,0
+  cfa    message_
+  cfa    space_
+  cfa    sp_store_
+  cfa    _zero_
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    _d_store
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   error3
+  cfa    _scr_
+  cfa    _d_store
+  cfa    _to_in_
+  cfa    _d_at
+  cfa    _r_hash_
+  cfa    _d_store
+error3:
+  cfa    quit_
+  exit
+
+erase:
+  stat   5
+  .ascii "eras"
+  term   'e'
+  link   b_error
+erase_:
+  thread
+  cfa    _zero_
+  cfa    _fill
+  exit
+
+endload:
+  stat   7
+  .ascii "endloa"
+  term   'd'
+  link   erase
+endload_:
+  thread
+  cfa    _b_r_from
+  cfa    _drop
+  exit
+
+empty_buffers:
+  stat   12
+  .ascii "empty_buffer"
+  term   's'
+  link   endload
+empty_buffers_:
+  thread
+  cfa    first_
+  cfa    limit_
+  cfa    _over
+  cfa    _minus
+  cfa    erase_
+  exit
+
+emit:
+  stat   4
+  .ascii "emi"
+  term   't'
+  link   empty_buffers
+emit_:
+  thread
+  cfa    _device_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+else:
+  istat  4
+  .ascii "els"
+  term   'e'
+  link   emit
+else_:
+  thread
+  cfa    _b_lit
+  val    0x02
+  cfa    query_pairs_
+  cfa    compile_
+  cfa    _b_branch
+  cfa    here_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _swap
+  cfa    _b_lit
+  val    0x02
+  cfa    then_
+  cfa    _b_lit
+  val    0x02
+  exit  
+
+dump:
+  stat   4
+  .ascii "dum"
+  term   'p'
+  link   else
+dump_:
+  thread
+/*   cfa    _dcols_	*/
+/*   cfa    _at		*/
+/*   cfa  _b_lit		*/
+/*   val  8		*/
+/*   cfa    _plus	*/
+/*   cfa    _one_	*/
+/*   cfa    _max	*/
+/*   cfa    _b_lit	*/
+/*   val    16		*/
+/*   cfa    _min	*/
+/*   cfa    _dup	*/
+/*   cfa    _dcols_	*/
+/*   cfa    _store	*/
+/*  !!! *** add div words to mcode	*/
+/*   cfa    _div_mod	*/
+  cfa    _b_lit
+  val    0x07
+  cfa    _plus
+  cfa    _two_div
+  cfa    _two_div
+  cfa    _two_div
+  cfa    _b_lit
+  val    0x00
+  cfa    _b_do
+dump2:
+  cfa    cr_
+  cfa    _dup
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  cfa    space_
+  cfa    _dup
+  cfa    dot_num_
+  cfa    space_
+  cfa    _dup
+  cfa    dot_ascii_
+ /*  cfa    _dcols_  */
+ /*  cfa    _at      */
+  cfa    _b_lit
+  val    0x08
+  cfa    _plus
+  cfa    _b_loop
+  addr   dump2
+  cfa    _drop
+  exit
+
+does:
+  istat  5
+  .ascii "does"
+  term   '>'
+  link   dump
+does_:
+  thread
+  cfa    query_comp_
+  cfa    compile_
+  cfa    b_semi_code_
+  cfa    _b_lit
+  pfa    _b_code_to_tc
+  cfa    here_
+  cfa    _minus
+  cfa    _b_lit
+  val    0x08
+  cfa    _minus
+  cfa    _two_div
+  cfa    _two_div
+  cfa    d_comma_
+  cfa    _dp_
+  cfa    _one_decr
+  cfa    _branchcode_
+  cfa    c_comma_
+  exit
+
+do:
+  istat  2
+  .ascii "d"
+  term   'o'
+  link   does
+do_:
+  thread
+  cfa    compile_
+  cfa    _b_do
+  cfa    here_
+  cfa    _b_lit
+  val    0x03
+  exit  
+
+depth:
+  stat   5
+  .ascii "dept"
+  term   'h'
+  link   do
+depth_:
+  thread
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    _b_sp_at
+  cfa    _minus
+  cfa    _two_div
+  cfa    _two_div
+  cfa    _one_minus
+  exit
+
+decimal:
+  stat   7
+  .ascii "decima"
+  term   'l'
+  link   depth
+decimal_:
+  thread
+  cfa    _b_lit
+  val    0x0A
+  cfa    _base_
+  cfa    _d_store
+  exit
+
+d_comma:
+  stat   2
+  .ascii "d"
+  term   ','
+  link   decimal
+d_comma_:
+  thread
+  cfa    here_
+  cfa    _d_store
+  cfa    _b_lit
+  val    0x04
+  cfa    allot_
+  exit
+
+d_query:
+  stat   2
+  .ascii "d"
+  term   '?'
+  link   d_comma
+d_query_:	/* addr -> */
+  thread
+  cfa    _d_at
+  cfa    dot_
+  exit
+
+cr:
+  stat   2
+  .ascii "c"
+  term   'r'
+  link   d_query
+cr_:
+  thread
+  cfa    _tick_cr_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+b_cr:
+  stat   4
+  .ascii "(cr"
+  term   ')'
+  link   cr
+b_cr_:
+  thread
+  cfa    _cr_
+  cfa    emit_
+  cfa    _lf_
+  cfa    emit_
+  exit
+
+count:
+  stat   5
+  .ascii "coun"
+  term   't'
+  link   b_cr
+count_:
+  thread
+  cfa    _dup
+  cfa    _one_plus
+  cfa    _swap
+  cfa    _c_at
+  exit
+
+constant:
+  stat   8
+  .ascii "constan"
+  term   't'
+  link   count
+constant_:
+  thread
+  cfa    create_
+  cfa    d_comma_
+  cfa    b_does_code_
+  cfa    _b_docon
+  exit
+
+cold:
+  stat   4
+  .ascii "col"
+  term   'd'
+  link   constant
+cold_:
+  thread
+  cfa    _tick_cold_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+b_cold:
+  stat   6
+  .ascii "(cold"
+  term   ')'
+  link   cold
+b_cold_:
+  thread
+  cfa    set_vars_
+  cfa    page_
+  cfa    cr_
+  cfa    b_dot_quotes_
+  len    13
+  .ascii "Attila 0v00  "
+  .align 2,0
+  cfa    abort_
+  exit
+
+c_query:
+  stat   2
+  .ascii "c"
+  term   '?'
+  link   b_cold
+c_query_:	/* addr -> */
+  thread
+  cfa    _c_at
+  cfa    dot_
+  exit
+
+c_comma:
+  stat   2
+  .ascii "c"
+  term   ','
+  link   c_query
+c_comma_:
+  thread
+  cfa    here_
+  cfa    _c_store
+  cfa    _one_
+  cfa    allot_
+  exit
+
+bye:
+  stat   3
+  .ascii "by"
+  term   'e'
+  link   c_comma
+bye_:
+  thread
+  cfa    _exit_forth
+  exit
+
+buffer:
+  stat   6
+  .ascii "buffe"
+  term   'r'
+  link   bye
+buffer_:
+  thread
+  cfa    _use_
+  cfa    _d_at
+  cfa    _dup
+  cfa    _b_to_r
+bfr1:
+  cfa    plus_buf_
+  cfa    _b_zbranch
+  addr   bfr1
+  cfa    _use_
+  cfa    _d_store
+/*
+  !!! put 'updated-buffer write' code here
+ */
+  cfa    _drop	/* discard blk no. currently */
+  cfa    _b_r_from
+  cfa    _dup
+  cfa    _prev_
+  cfa    _d_store
+  exit
+
+block:
+  stat   5
+  .ascii "bloc"
+  term   'k'
+  link   buffer
+block_:
+  thread
+  cfa    _one_minus
+  cfa    _b_lit
+  val    0x400
+  cfa    _u_star
+  cfa    _prev_
+  cfa    _d_at
+  cfa    _plus
+  exit
+
+blanks:
+  stat   6
+  .ascii "blank"
+  term   's'
+  link   block
+blanks_:
+  thread
+  cfa    _bl_
+  cfa    _fill
+  exit
+
+begin:
+  istat  5
+  .ascii "begi"
+  term   'n'
+  link   blanks
+begin_:
+  thread
+  cfa    query_comp_
+  cfa    here_
+  cfa    _one_
+  exit
+
+back:
+  stat   4
+  .ascii "bac"
+  term   'k'
+  link   begin
+back_:
+  thread
+  cfa    d_comma_
+  exit  
+
+ascii:
+  istat  5
+  .ascii "asci"
+  term   'i'
+  link   back
+ascii_:
+  thread
+  cfa    _bl_
+  cfa    word_
+  cfa    _one_plus
+  cfa    _c_at
+  cfa    _state_
+  cfa    _d_at
+  cfa    _b_zbranch
+  addr   ascii1
+  cfa    literal_
+ascii1:
+  exit
+
+allot:
+  stat   5
+  .ascii "allo"
+  term   't'
+  link   ascii
+allot_:
+  thread
+  cfa    _dp_
+  cfa    _dplus_store
+  exit
+
+again:
+  istat  5
+  .ascii "agai"
+  term   'n'
+  link   allot
+again_:
+  thread
+  cfa    _one_
+  cfa    query_pairs_
+  cfa    compile_
+  cfa    _b_branch
+  cfa    back_
+  exit  
+
+abort:  
+  stat   5
+  .ascii "abor"
+  term   't'
+  link   again
+abort_:
+  thread
+  cfa    _tick_abort_
+  cfa    _d_at
+  cfa    _execute
+  exit  
+
+b_abort:  
+  stat   7
+  .ascii "(abort"
+  term   ')'
+  link   abort
+b_abort_:
+  thread
+  cfa    sp_store_
+  cfa    _zero_
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    _d_store
+  cfa    hex_
+  cfa    attila_
+  cfa    definitions_
+  cfa    turnkey_
+  cfa    quit_
+  exit
+
+query_stack:
+  stat   6
+  .ascii "?stac"
+  term   'k'
+  link   abort
+query_stack_:
+  thread
+  cfa    _s_zero_
+  cfa    _d_at
+  cfa    _b_sp_at
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _u_lt
+  cfa    _one_
+  cfa    query_error_
+  cfa    _b_sp_at
+  cfa    here_
+  cfa    _b_lit
+  val    0x80
+  cfa    _plus
+  cfa    _u_lt
+  cfa    _b_lit
+  val    0x07
+  cfa    query_error_
+  exit
+
+query_symb:
+  stat   1
+  term   '?'
+  link   query_stack
+query_symb_:	/* addr -> */
+  thread
+  cfa    u_at	/* need sign-extended _at ? !!! */
+  cfa    dot_
+  exit
+
+to_r:
+  istat  2
+  .ascii ">"
+  term   'r'
+  link   query_symb
+to_r_:
+  thread
+  cfa    compile_
+  cfa    _b_to_r
+  exit
+
+semi:
+  istat  1
+  term   ';'
+  link   to_r
+semi_:
+  thread
+  cfa    query_csp_
+  cfa    compile_
+  cfa    _b_semi_s
+  cfa    smudge_
+  cfa    sq_bracket_
+  cfa    b_does_code_
+  cfa    _b_docol
+  exit  
+
+colon:
+  stat   1
+  term   ':'
+  link   semi
+colon_:
+  thread
+  cfa    end_sq_bracket_
+  cfa    store_csp_ 
+  cfa    _current_
+  cfa    _d_at
+  cfa    _context_
+  cfa    _d_store
+  cfa    create_
+  cfa    smudge_
+  exit
+
+plus_buf:
+  stat   4
+  .ascii "+bu"
+  term   'f'
+  link   colon
+plus_buf_:
+  thread
+  cfa    _bbuf_
+  cfa    _plus
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _dup
+  cfa    limit_
+  cfa    _u_lt
+  cfa    _not
+  cfa    _b_zbranch
+  addr   pl_frst1
+  cfa    _drop
+  cfa    first_
+pl_frst1:
+  cfa    _dup
+  cfa    _prev_
+  cfa    _d_at
+  cfa    _minus
+  exit
+
+slash_s:
+  istat   2
+  .ascii "/"
+  term   's'
+  link   plus_buf
+slash_s_:
+  thread
+  cfa    query_loading_
+  cfa    _to_in_
+  cfa    _d_at
+  cfa    _b_lit
+  val    0xFFFFFFC0
+  cfa    _and
+  cfa    _cl_
+  cfa    _plus
+  cfa    _to_in_
+  cfa    _d_store
+  exit
+
+div_mod:
+  stat   4
+  .ascii "/mo"
+  term   'd'
+  link   slash_s
+div_mod_:
+  thread
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   divmod1
+  cfa    _mdiv_mod	/* _b_div_mod  !!! */
+  cfa    _b_branch
+  addr   divmod2
+divmod1:
+  cfa    _one_plus
+  cfa    _b_lit
+  val    0x0A
+  cfa    query_error_
+divmod2:
+  exit
+
+div:
+  stat   1
+  term   '/'
+  link   div_mod
+div_:
+  thread
+  cfa    _dup
+  cfa    _b_zbranch
+  addr   div1
+  cfa    _mdiv_mod	/* _b_div_mod  !!! */
+  cfa    _swap
+  cfa    _drop
+  cfa    _b_branch
+  addr   div2
+div1:
+  cfa    _one_plus
+  cfa    _b_lit
+  val    0x0A
+  cfa    query_error_
+div2:
+  exit
+
+dot_r:
+  stat   2
+  .ascii "."
+  term   'r'
+  link   div
+dot_r_:	/* n r -> */
+  thread
+  cfa    _tick_dot_r_
+  cfa    _d_at
+  cfa    _execute
+  exit
+
+dot_quotes:
+  istat  2
+  .ascii "."
+  term   '\"'
+  link   dot_r
+dot_quotes_:
+  thread
+  cfa    _b_lit
+  val    '\"'
+  cfa    _state_
+  cfa    _d_at
+  cfa    _b_zbranch
+  addr   dot_quotes1
+  cfa    compile_
+  cfa    b_dot_quotes_
+  cfa    word_
+  cfa    _b_lit
+  val    '\"'
+  cfa    query_delim_
+  cfa    _c_at
+  cfa    _one_plus
+  cfa    _align
+  cfa    allot_
+  cfa    _b_branch
+  addr   dot_quotes2
+dot_quotes1:
+  cfa    word_
+  cfa    _b_lit
+  val    '\"'
+  cfa    query_delim_
+  cfa    count_
+  cfa    type_
+dot_quotes2:
+  exit
+
+dot:
+  stat   1
+  term   '.'
+  link   dot_quotes
+dot_:	/* n -> */
+  thread 
+  cfa    _one_
+  cfa    dot_r_
+  cfa    space_
+  exit
+
+comma:
+  stat   1
+  term   ','
+  link   dot
+comma_:
+  thread
+  cfa    here_
+  cfa    _store
+  cfa    _b_lit
+  val    0x02
+  cfa    allot_
+  exit
+
+brackets:
+  istat  1
+  term   '('
+  link   comma
+brackets_:
+  thread
+  cfa    _b_lit
+  val    ')'
+  cfa    word_
+  cfa    _b_lit
+  val    ')'
+  cfa    query_delim_
+  cfa    _drop
+  exit
+
+tick:
+  istat  1
+  term   '\''
+  link   brackets
+tick_:
+  thread
+  cfa    find_
+  cfa    _dup
+  cfa    _zero_eq
+  cfa    _zero_
+  cfa    query_error_
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _state_
+  cfa    _d_at
+  cfa    _b_zbranch
+  addr   tick1
+  cfa    dliteral_
+tick1:
+  exit
+
+
+/* ========= Code definitions (sys words) ========== */
+
+.L4:	.long	0xFFFFFFFF
+.L5:	.long	0xFFFFFFFC
+
+enclose:
+  stat   7
+  .ascii "enclos"
+  term   'e'
+  link   store_csp
+_enclose:
+  mcode
+  mov    r2,#0
+  ldr    fp,[sp],#4
+  mov    r1,#1
+  ldr    r6,[sp]
+  mov    r0,#0
+_encl1:
+  cmp    r1,#0
+  beq    _encl7
+  ldrb   r5,[r6]
+  cmp    r5,fp
+  bne    _encl4
+  cmp    r2,#0
+  beq    _encl3
+  str    r0,[sp,#-4]!
+  cmp    r5,#0
+  beq    _encl2
+  add    r0,r0,#1
+  add    r6,r6,#1
+_encl2:
+  str    r0,[sp,#-4]!
+  mov    r1,#0
+_encl3:
+  b      _encl6
+_encl4:
+  cmp    r2,#0
+  bne    _encl5
+  str    r0,[sp,#-4]!
+  mov    r2,#1
+  b      _encl6
+_encl5:
+  cmp    r5,#0
+  bne    _encl6
+  str    r0,[sp,#-4]!
+  str    r0,[sp,#-4]!
+  mov    r1,#0
+_encl6:
+  add    r0,r0,#1
+  add    r6,r6,#1
+  b      _encl1
+_encl7:
+  next
+
+execute:
+  stat   7
+  .ascii "execut"
+  term   'e'
+  link   enclose
+_execute:	/* pop .L TOS address, branch to .L addr via W */
+  mcode
+  ldr    fp,[sp],#4
+  ldr    pc,[fp],#4
+  next
+
+align:
+  stat   5
+  .ascii "alig"
+  term   'n'
+  link   execute
+_align:
+  mcode
+  ldr    r0,[sp]
+  add    r0,r0,#0x03
+  ldr    r1,.L5
+  and    r0,r0,r1
+  str    r0,[sp]
+  next
+
+/* ========= Code definitions (mon words) ========== */
+
+xor:
+  stat   3
+  .ascii "xo"
+  term   'r'
+  link   tick
+_xor:	/* pop 2 .L TOS, replace XOR .L */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  eor    r1,r1,r0
+  str    r1,[sp]
+  next
+
+u_at:
+  stat   2
+  .ascii "u"
+  term   '@'
+  link   xor
+_u_at:	/* pop .L TOS addr, fetch .W via addr, push .L to TOS */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp]
+  ldrb   r0,[r6],#1
+  ldrb   r1,[r6]
+  mov    r0,r1,LSL#8
+  add    r0,r0,r1
+  str    r0,[sp]
+  next
+
+u_lt:
+  stat   2
+  .ascii "u"
+  term   '<'
+  link   u_at
+_u_lt:	/* pop & compare 2 .L TOS, replace with -1 .L if u<, else 0 .L */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r0,r1
+  bls    ult1
+  ldr    r0,.L4
+  b      ult2
+ult1:
+  mov    r0,#0
+ult2:
+  str    r0,[sp]
+  next
+
+u_star:
+  stat   2
+  .ascii "u"
+  term   '*'
+  link  u_lt
+_u_star:	/* pop 2 .W TOS, replace with unsigned multiplicand .L TOS  */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  mul    r2,r1,r0
+  str    r2,[sp]
+  next
+
+swap_bytes:
+  stat   10
+  .ascii "swap_byte"
+  term   's'
+  link   u_star
+_swap_bytes:	/* swap bytes in .W TOS */
+  mcode
+  ldr    r0,[sp]
+  mov    r1,r0
+  mov    r0,r0,LSR#16
+  mov    r1,r1,LSL#16
+  add    r0,r1
+  str    r0,[sp]
+  next
+
+swap:
+  stat   4
+  .ascii "swa"
+  term   'p'
+  link   swap_bytes
+_swap:	/* swap 2 .L TOS */
+  mcode
+  add    r6,sp,#4
+  ldr    r0,[r6]
+  ldr    r1,[sp]
+  str    r1,[r6]
+  str    r0,[sp]
+  next
+
+rot:
+  stat   3
+  .ascii "ro"
+  term   't'
+  link   swap
+_rot:	/* rotate 3 .L TOS */
+  mcode
+  add    r6,sp,#8
+  sub    r1,r6,#4
+  mov    r2,sp
+  ldr    r3,[r6]
+  ldr    r4,[r1]
+  str    r4,[r6]
+  ldr    r5,[r2]
+  str    r5,[r1]
+  str    r3,[r2]
+  next
+
+over:
+  stat   4
+  .ascii "ove"
+  term   'r'
+  link   rot
+_over:	/* fetch .L above TOS, push .L to TOS */
+  mcode
+  add	   r6,sp,#4
+  ldr    r0,[r6]
+  str    r0,[sp,#-4]!
+  next
+
+or:
+  stat   2
+  .ascii "o"
+  term   'r'
+  link   over
+_or:	/* pop 1 .L TOS, 'Or' with .L TOS, copy result to .L TOS */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  orr    r1,r1,r0
+  str    r1,[sp]
+  next
+
+not:
+  stat   3
+  .ascii "no"
+  term   't'
+  link   or
+_not:	/* test .L TOS, replace with 0 .L if <>0, else -1 .L */
+  mcode
+  ldr    r0,[sp]
+  cmp    r0,#0
+  bne    not1
+  ldr    r0,.L4
+  b      not2
+not1:
+  mov    r0,#0
+not2:
+  str    r0,[sp]
+  next
+
+min:
+  stat   3
+  .ascii "mi"
+  term   'n'
+  link   not
+_min:	/* pop 2 .L TOS, replace with the .L min value */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r0,r1
+  bgt    mn1
+  str    r0,[sp]
+mn1:
+  next
+
+mdiv_mod:
+  stat  7
+  .ascii  "(m/mod"
+  term  ')'
+  link  min
+_mdiv_mod:
+  mcode
+/*  pop op		*/
+/*  pop r2		*/
+  ldr   r1,[sp],#4
+  ldr   r2,[sp]
+/*  call scheck		*/
+/*  set w lsb to 1	*/
+  mov   fp,#01
+/*  do while op.msb >= 0 */
+_bmdv2:
+    cmp   r1,#0
+    blt  _bmdv1
+/*    shift op left 1	*/
+  mov   r1,r1,ASL#1
+/*    inc w.lsb by 1	*/
+  add   fp,fp,#1
+/*  enddo		*/
+ bal  _bmdv2
+_bmdv1:
+/*  set ac to 0		*/
+  mov   r0,#0
+/*  do while w.lsb > 0	*/
+ cmp   r0,#0
+ /* beq   _bmdv3	*/
+/*    shift ac left 1	*/
+ mov   r0,r0,ASL#1
+/*    sub op from r2	*/
+ sub   r2,r2,r1
+/*    if borrow = 0	*/
+/*       or ac with 1	*/
+/*    else		*/
+/*       add op to r2	*/
+/*    endif		*/
+/*    shift op right by 1  */
+/*    decrement w.lsb by 1 */
+/*  enddo		*/
+_bmdv3:
+/*  call {sjust}	*/
+/*  push r2		*/
+  str   r1,[sp]
+/*  push ac		*/
+  str   r2,[sp,#-4]!
+ next
+
+max:
+  stat   3
+  .ascii "ma"
+  term   'x'
+  link   mdiv_mod
+_max:	/* pop 2 .L TOS, replace with the .L max value */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r1,r0
+  bgt    mx1
+  str    r0,[sp]
+mx1:
+  next
+
+fill:
+  stat   4
+  .ascii "fil"
+  term   'l'
+  link   max
+_fill:	/* pop 3 .L TOS, store lsb of 3rd .L via 1st .L */
+  mcode
+  ldr    r1,[sp],#4
+  ldr    r2,[sp],#4
+  ldr    r6,[sp],#4
+fill1:
+  subs   r2,r2,#1
+  bmi    fill2
+  strb   r1,[r6],#1
+  b      fill1
+fill2:
+  next
+
+dup:
+  stat   3
+  .ascii "du"
+  term   'p'
+  link   fill
+_dup:	/* fetch .L TOS, push .L copy to TOS */
+  mcode
+  ldr    r0,[sp]
+  str    r0,[sp,#-4]!
+  next
+
+drop:
+  stat   4
+  .ascii "dro"
+  term   'p'
+  link   dup
+_drop:	/* discard .L TOS */
+  mcode
+  add    sp,sp,#4
+  next
+
+dnegate:
+  stat   7
+  .ascii "dnegat"
+  term   'e'
+  link   drop
+_dnegate:	/* negate .L TOS */
+  mcode
+  ldr    r0,[sp]
+  mov    r1,#0
+  sub    r1,r1,r0
+  str    r1,[sp]
+  next
+
+digit:
+  stat   5
+  .ascii "digi"
+  term   't'
+  link   dnegate
+_digit:	/* if .B TOS-1 valid digit for .B base TOS */
+  mcode
+  ldr    r1,[sp],#4
+  ldr    r0,[sp],#4
+  cmp    r0,#0x60
+  ble    dig4
+  and    r0,r0,#0x5F
+dig4:
+  mov    fp,#0
+  cmp    r0,#0x40
+  ble    dig1
+  sub    r0,r0,#0x41
+  add    r0,r0,#0x0A
+  b      dig2
+dig1:
+  cmp    r0,#0x2F
+  ble    dig3
+  cmp    r0,#0x39
+  bgt    dig3
+  sub    r0,r0,#0x30
+dig2:
+  cmp    r1,r0
+  ble    dig3
+  str    r0,[sp,#-4]!
+  ldr    fp,.L4
+dig3:
+  str    fp,[sp,#-4]!
+  next
+
+d_at:
+  stat   2
+  .ascii "d"
+  term   '@'
+  link   digit
+_d_at:	/* pop .L TOS addr, fetch .L via addr, push .L to TOS */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp]
+  ldr    r0,[r6]
+  str    r0,[sp]
+  next
+
+d_store:
+  stat   2
+  .ascii "d"
+  term   '!'
+  link   d_at
+_d_store:	/* pop 2 .L, store .L value via .L addr */
+  mcode	/* *** need to allow access @ odd boundaries *** */
+  ldr    r6,[sp],#4
+  ldr    r0,[sp],#4
+  str    r0,[r6]
+  next
+
+down_cmove:
+  stat   6
+  .ascii "<cmov"
+  term   'e'
+  link   d_store
+_down_cmove:	/*  */
+  mcode
+  ldr    r2,[sp],#4
+  ldr    r0,[sp],#4
+  ldr    r1,[sp],#4
+  add    r0,r0,r2
+  sub    r0,#1
+  add    r1,r1,r2
+  sub    r1,#1
+dcmv1:
+  subs   r2,r2,#1
+  bmi    dcmv2
+  ldrb   r6,[r1],#-1
+  strb   r6,[r0],#-1
+  b      dcmv1
+dcmv2:
+  next
+
+cmove:
+  stat   5
+  .ascii "cmov"
+  term   'e'
+  link   down_cmove
+_cmove:	/* pop 3 .L TOS, read byte via 1st .L, store via 2nd .L */
+  mcode
+  ldr    r2,[sp],#4
+  ldr    r6,[sp],#4
+  ldr    r1,[sp],#4
+cmv1:
+  subs   r2,r2,#1
+  bmi    cmv2
+  ldrb   r0,[r1],#1
+  strb   r0,[r6],#1
+  b      cmv1
+cmv2:
+  next
+
+c_at:
+  stat   2
+  .ascii "c"
+  term   '@'
+  link   cmove
+_c_at:	/* pop .L TOS, fetch .B via addr, push extended .L to TOS */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp]
+  ldrb   r0,[r6]
+  and    r0, r0, #0xff
+  str    r0,[sp]
+  next
+
+c_plus_store:
+  stat   3
+  .ascii "c+"
+  term   '!'
+  link   c_at
+_c_plus_store:	/*  */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp],#4
+  ldr    r1,[sp],#4
+  ldrb   r2,[r6]
+  add    r2,r2,r1
+  strb   r2,[r6]
+  next
+
+c_store:
+  stat   2
+  .ascii "c"
+  term   '!'
+  link   c_plus_store
+_c_store:	/* pop 2 .L TOS, store .B via addr */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp],#4
+  ldr    r0,[sp],#4
+  and    r0,r0,#0xff
+  strb   r0,[r6]
+  next
+
+an_d:
+  stat   3
+  .ascii "an"
+  term   'd'
+  link  c_store
+_and:	/* pop 1 .L TOS, 'And' with .L TOS, copy result to .L TOS */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  and    r1,r1,r0
+  str    r1,[sp]
+  next
+
+/* _adr_store  mcode     ; pop 2 .L, store 3bytes via addr */
+
+abs:
+  stat   3
+  .ascii "ab"
+  term   's'
+  link   an_d
+_abs:	/* */
+  mcode
+  ldr    r0,[sp]
+  mov    r1,#0
+  cmp    r0,r1
+  bpl    ab1
+  sub    r0,r1,r0
+  str    r0,[sp]
+ab1:
+  next
+
+/* at: pop .L TOS addr, fetch .W via addr, sign extend, push .L to TOS */
+
+/* _qserin     mcode     ; fetch serial i/p queue length, push .L to TOS */
+
+query_dup:
+  stat   4
+  .ascii "?du"
+  term   'p'
+  link   abs
+_query_dup:	/* */
+  mcode
+  ldr    r0,[sp]
+  cmp    r0,#0
+  beq    qdp1
+  str    r0,[sp,#-4]!
+qdp1:
+  next
+
+rshift16:
+  stat   4
+  .ascii ">>1"
+  term   '6'
+  link   query_dup
+_rshift16:	/* replace .L TOS with .W MSW */
+  mcode
+  ldr    r0,[sp]
+  mov    r0,r0,LSR#16
+  str    r0,[r6]
+  next
+
+/* _rshift_n   mcode     ; shift .L TOS-1 by .B places right */
+
+gt:
+  stat   1
+  term   '>'
+  link   rshift16
+_gt:	/* pop & compare 2 .L TOS, replace with -1 .L if >, else 0 .L */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r1,r0
+  bgt    gt1
+  mov    r0,#0
+  b      gt2
+gt1:
+  ldr    r0,.L4
+gt2:
+  str    r0,[sp]
+  next
+
+eq:
+  stat   1
+  term   '='
+  link   gt
+_eq:	/* pop & compare 2 .L TOS, replace with -1 .L if =, else 0 .L */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r0,r1
+  bne    eq1
+  ldr    r0,.L4
+  b      eq2
+eq1:
+  mov    r0,#0
+eq2:
+  str    r0,[sp]
+  next
+
+lshift16:
+  stat   4
+  .ascii "<<1"
+  term   '6'
+  link   eq
+_lshift16:	/* replace .L TOS with .W LSW << 16 */
+  mcode
+  ldr    r0,[sp]
+  mov    r0,r0,LSL#16
+  str    r0,[r6]
+  next
+
+lt:
+  stat   1
+  term   '<'
+  link   lshift16
+_lt:	/* pop & compare 2 .L TOS, replace with -1 .L if <, else 0 .L */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  cmp    r1,r0
+  blt    lt1
+  mov    r0,#0
+  b      lt2
+lt1:
+  ldr    r0,.L4
+lt2:
+  str    r0,[sp]
+  next
+
+/* _minus_store */
+
+two_star:
+  stat   2
+  .ascii "2"
+  term   '*'
+  link   lt
+_two_star:	/* multiply .L TOS by 2 */
+  mcode
+  ldr    r0,[sp]
+  mov    r0,r0,ASL#1
+  str    r0,[sp]
+  next
+
+two_div:
+  stat   2
+  .ascii "2"
+  term   '/'
+  link  two_star
+_two_div:	/* divide .L TOS by 2 */
+  mcode
+  ldr    r0,[sp]
+  mov    r0,r0,ASR#1
+  str    r0,[sp]
+  next
+
+two_drop:
+  stat   5
+  .ascii "2dro"
+  term   'p'
+  link   two_div
+_two_drop:	/* discard 2 .L TOS */
+  mcode
+  add    sp,sp,#8
+  next
+
+two_minus:
+  stat   2
+  .ascii "2"
+  term   '_'
+  link  two_drop
+_two_minus:	/* pop .L TOS, replace with .L result of subtracting 2 */
+  mcode
+  ldr    r0,[sp]
+  sub    r0,r0,#2
+  str    r0,[sp]
+  next
+
+two_plus:
+  stat   2
+  .ascii "2"
+  term   '+'
+  link   two_minus
+_two_plus:	/* pop .L TOS, replace with .L result of adding 2 */
+  mcode
+  ldr    r0,[sp]
+  add    r0,r0,#2
+  str    r0,[sp]
+  next
+
+one_decr:
+  stat   3
+  .ascii "1-"
+  term   '!'
+  link   two_plus
+_one_decr:	/* */
+  mcode
+  ldr    r6,[sp],#4
+  ldr    r0,[r6]
+  sub    r0,r0,#1
+  str    r0,[r6]
+  next
+
+one_incr:
+  stat   3
+  .ascii "1+"
+  term   '!'
+  link   one_decr
+_one_incr:	/* */
+  mcode
+  ldr    r6,[sp],#4
+  ldr    r0,[r6]
+  add    r0,r0,#1
+  str    r0,[r6]
+  next
+
+one_minus:
+  stat   2
+  .ascii "1"
+  term   '-'
+  link   one_incr
+_one_minus:	/* pop .L TOS, replace with .L result of subtracting 1 */
+  mcode
+  ldr    r0,[sp]
+  sub    r0,r0,#1
+  str    r0,[sp]
+  next
+
+one_plus:
+  stat   2
+  .ascii "1"
+  term   '+'
+  link   one_minus
+_one_plus:	/* pop .L TOS, replace with .L result of adding 1 */
+  mcode
+  ldr    r0,[sp]
+  add    r0,r0,#1
+  str    r0,[sp]
+  next
+
+zero_gt:
+  stat   2
+  .ascii "0"
+  term   '>'
+  link   one_plus
+_zero_gt:	/* */
+  mcode
+  ldr    r0,[sp]
+  cmp    r0,#0
+  ble    zgt1
+  ldr    r0,.L4
+  b      zgt2
+zgt1:
+  mov    r0,#0
+zgt2:
+  str    r0,[sp]
+  next
+
+zero_eq:
+  stat   2
+  .ascii "0"
+  term   '='
+  link   zero_gt
+_zero_eq:	/* test .L TOS, replace with -1 .L if 0, else 0 .L */
+  mcode
+  ldr    r0,[sp]
+  cmp    r0,#0
+  bne    zeq1
+  ldr    r0,.L4
+  b      zeq2
+zeq1:
+  mov    r0,#0
+zeq2:
+  str    r0,[sp]
+  next
+
+zero_lt:
+  stat   2
+  .ascii "0"
+  term   '<'
+  link   zero_eq
+_zero_lt:	/* */
+  mcode
+  ldr    r0,[sp]
+  cmp    r0,#0
+  bge    zlt1
+  ldr    r0,.L4
+  b      zlt2
+zlt1:
+  mov    r0,#0
+zlt2:
+  str    r0,[sp]
+  next
+
+minus:
+  stat  1
+  term  45
+  link  zero_lt
+_minus:	/* pop 2 .L TOS, replace with .L result of subtraction */
+  mcode
+  ldr   r0,[sp],#4
+  ldr   r1,[sp]
+  sub   r1,r1,r0
+  str   r1,[sp]
+  next
+
+/* _plus_store */
+
+dplus_store:
+  stat   3
+  .ascii "d+"
+  term   '!'
+  link   minus
+_dplus_store:	/* */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp],#4
+  ldr    r1,[sp],#4
+  ldr    r2,[r6]
+  add    r2,r2,r1
+  str    r2,[r6]
+  next
+
+plus:
+  stat   1
+  term   '+'
+  link   dplus_store
+_plus:	/* pop .L, add to .L TOS */
+  mcode
+  ldr    r0,[sp],#4
+  ldr    r1,[sp]
+  add    r1,r1,r0
+  str    r1,[sp]
+  next
+
+store:
+  stat   1
+  term   '!'
+  link   plus
+_store:	/* pop 2 .L, store .W via addr */
+  mcode	/* *** ensure access on odd boundaries *** */
+  ldr    r6,[sp],#4
+  ldr    r0,[sp],#4
+  mov    r1,r0,ASR#8
+  strb   r0,[r6],#1
+  strb   r1,[r6]
+  next
+
+
+/* ========== dictionary root  ============ */
+
+x:
+  istat  1
+  term   0x00
+  link   store
+x_:
+  thread
+  cfa    _state_
+  cfa    _d_at
+  cfa    _zero_gt
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _zero_gt
+  cfa    _and
+  cfa    _b_lit
+  val    0x1B
+  cfa    query_error_
+  cfa    _b_r_from
+  cfa    _drop
+  exit  
+
+  
+/* =============== debug ================== */
+
+  nolink
+hexin_:
+  thread
+  cfa    _b_lit
+  val    0
+  cfa    _dup
+hexin1:
+  cfa    _b_key
+hexin1_2:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x05  /* Ctrl-e key quits to Cold start */
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   hexin2
+  cfa    quit_
+hexin2:
+  cfa    _dup
+  cfa    _b_lit
+  val    32
+  cfa    _gt
+  cfa    _b_zbranch
+  addr   hexin4
+  cfa    _dup
+  cfa    _b_emit
+  cfa    _dup
+  cfa    _b_lit
+  val    57
+  cfa    _gt
+  cfa    _b_zbranch
+  addr   hexin3
+  cfa    _b_lit
+  val    95
+  cfa    _and
+  cfa    _b_lit
+  val    7
+  cfa    _minus
+hexin3:
+  cfa    _b_lit
+  val    48
+  cfa    _minus
+  cfa    _rot
+  cfa    _two_star
+  cfa    _two_star
+  cfa    _two_star
+  cfa    _two_star
+  cfa    _plus
+  cfa    _swap
+  cfa    _one_
+  cfa    _plus
+  cfa    _b_branch
+  addr   hexin1
+hexin4:
+  cfa    _drop
+  cfa    _dup
+  cfa    _not
+  cfa    _b_zbranch
+  addr   hexin5
+  cfa    _drop
+hexin5:
+  exit
+
+  nolink
+hexout_:
+  thread
+  cfa     _zero_
+  cfa     _rot
+  cfa     _rot
+hexout1:
+  cfa     _swap
+  cfa     _dup
+  cfa     _b_lit
+  val     0x0F
+  cfa     _and
+  cfa     _dup
+  cfa     _b_lit
+  val     0x09
+  cfa     _gt
+  cfa     _b_zbranch
+  addr    hexout2
+  cfa     _b_lit
+  val     0x07
+  cfa     _plus
+hexout2:
+  cfa     _b_lit
+  val     0x30
+  cfa     _plus
+  cfa     _swap
+  cfa     _two_div
+  cfa     _two_div
+  cfa     _two_div
+  cfa     _two_div
+  cfa     _rot
+  cfa     _one_
+  cfa     _minus
+  cfa     _dup
+  cfa     _not
+  cfa     _b_zbranch
+  addr    hexout1
+  cfa     _drop
+  cfa     _drop
+hexout3:
+  cfa     _b_emit
+  cfa     _dup
+  cfa     _not
+  cfa     _b_zbranch
+  addr    hexout3
+  cfa     _drop
+  exit
+
+  nolink
+hex_dot_r_:
+  thread
+  cfa     _drop
+  cfa     _b_lit
+  val     0x08
+  cfa     hexout_
+  exit
+
+dot_stack:
+  stat   2
+  .ascii "."
+  term  's'
+  link   align
+dot_stack_:
+  thread
+  cfa    cr_
+  cfa    _b_lit
+  val    0x03
+  cfa    _b_pick
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  cfa    space_
+  cfa    _over
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  cfa    space_
+  cfa    _dup
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  cfa    _b_sp_at
+  cfa    space_
+  cfa    _b_lit
+  val    0x3A
+  cfa    emit_
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  exit
+
+debug:
+  stat   5
+  .ascii "debu"
+  term   'g'
+  link   dot_stack
+debug_:
+  thread
+debug1:
+  cfa    space_
+  cfa    _b_lit
+  val    'o'
+  cfa    _b_emit
+  cfa    _b_lit
+  val    'k'
+  cfa    _b_emit
+  cfa    cr_
+  cfa    dot_stack_
+  cfa    cr_
+dbg1_1:
+  cfa    _b_key		/*  Read i/p command		*/
+  cfa    _dup
+  cfa    _b_emit	/*  Echo			*/
+  cfa    _b_lit
+  val    ':'
+  cfa    _b_emit
+  cfa    _b_lit
+  val    0x20
+  cfa    _b_emit
+  cfa    _b_lit
+  val    0x5F
+  cfa    _and		/*  Convert command to U-Case	*/
+  cfa    _dup
+  cfa    _b_lit
+  val     'X'
+  cfa    _eq
+  cfa    _not
+  cfa    _b_zbranch
+  addr   dbg8		/*  e'X'it from monitor		*/
+  cfa    _b_lit
+  val    0x20
+  cfa    _b_emit
+  cfa    _dup
+  cfa    _b_lit
+  val    'T'
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg1_4
+  cfa    _drop		/*  run 'T'est stub		*/
+  cfa    stub_
+  cfa    _b_branch
+  addr   dbg6
+dbg1_4:
+  cfa    _dup
+  cfa    _b_lit
+  val    'D'
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg1_3
+  cfa    _drop		/*  'D'isplay memory		*/
+  cfa    hexin_
+  cfa    _drop
+  cfa    space_
+  cfa    hexin_
+  cfa    _drop
+  cfa    dump_
+  cfa   _b_branch
+  addr   dbg6
+dbg1_3:
+  cfa    _dup
+  cfa    _b_lit
+  val    'M'
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg4
+  cfa    _drop		/*  'M'odify memory		*/
+  cfa    hexin_
+  cfa    _drop
+dbg2:
+  cfa    cr_
+  cfa    _dup
+  cfa    _b_lit
+  val    0x08
+  cfa    hexout_
+  cfa    space_
+  cfa    _dup
+  cfa    _c_at
+  cfa    _b_lit
+  val    0x02
+  cfa    hexout_
+  cfa    space_
+  cfa    hexin_
+  cfa    _b_zbranch
+  addr   dbg3
+  cfa    _over
+  cfa    _c_store
+dbg3:
+  cfa    _b_lit
+  val    0x01
+  cfa    _plus
+  cfa    _b_branch
+  addr   dbg2
+dbg4:
+  cfa    _dup
+  cfa    _b_lit
+  val    'C'
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg5
+  cfa    _drop		/*  'C'all cfa address on stack */
+  cfa    hexin_
+  cfa    _drop
+  cfa    space_
+  cfa    _execute
+  cfa    _b_branch
+  addr   dbg6
+dbg5:
+  cfa    _dup
+  cfa    _b_lit
+  val    'P'
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg11
+  cfa    _drop
+  cfa    hexin_		/*  'P'ush number on stack	*/
+  cfa    _drop
+  cfa    _b_branch
+  addr   dbg6
+dbg11:
+  cfa    _dup
+  cfa    _b_lit
+  val    0x0E
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   dbg7
+  cfa    _drop
+  cfa    _b_lit
+  val    0x08		/*  '.' (print) 32b TOS value	*/
+  cfa    hexout_
+  cfa    _b_branch
+  addr   dbg6
+dbg7:
+  cfa    _drop
+dbg6:
+  cfa    _b_branch
+  addr   debug1
+dbg8:
+  cfa    _drop
+  exit
+
+fopenf:
+  stat   5
+  .ascii "fope"
+  term   'n'
+  link   debug
+_fopen:
+  mcode
+  ldr    r1,[sp],#4
+  ldr    r0,[sp]
+  stmfd sp!,{r7-r12}
+  bl     fopen
+  ldmfd sp!,{r7-r12}
+  str    r0,[sp]
+  next
+
+fgetsf:
+  stat   5
+  .ascii "fget"
+  term   's'
+  link   fopenf
+_fgets:
+  mcode
+  ldr    r2,[sp],#4
+  ldr    r1,[sp],#4
+  ldr    r0,[sp]
+  stmfd sp!,{r7-r12}
+  bl     fgets
+  ldmfd sp!,{r7-r12}
+  str    r0,[sp]
+  next
+
+fgetcf:
+  stat   5
+  .ascii "fget"
+  term   'c'
+  link   fgetsf
+_fgetc:
+  mcode
+  ldr    r0,[sp]
+  stmfd sp!,{r7-r12}
+  bl     fgetc
+  ldmfd sp!,{r7-r12}
+  str    r0,[sp]
+  next
+
+fclosef:
+  stat   6
+  .ascii  "fclos"
+  term   'e'
+  link   fgetcf
+_fclose:
+  mcode
+  ldr    r0,[sp],#4
+  stmfd sp!,{r7-r12}
+  bl     fclose
+  ldmfd sp!,{r7-r12}
+  next
+
+test:
+  stat   4
+  .ascii "tes"
+  term   't'
+  link   fclosef
+  thread
+  exit
+
+  nolink
+stub_:		/* thread test stub */
+  thread
+
+  exit
+  
+/*  ______________________  */
+/*  End of debug interface  */
+
+
+
+/* ======= End of 'C' module ========= */
+
+  	.size	thread, .-thread
+
+	.lcomm	gap1,     	32
+	.lcomm	vm_vars,  	32	/* threaded VM regr. init. data	*/
+	.lcomm	gap2,     	32
+	.lcomm	filbuf1,  	((1024 * SCRperBUF) + 4)	/* file buffer 1 */
+	.lcomm	filbuf2,  	((1024 * SCRperBUF) + 4)	/* file buffer 2 */
+	.lcomm	filbuf3,  	((1024 * SCRperBUF) + 4)	/* file buffer 3 */
+	.lcomm	limit_buf,	32
+
+	.ident	"GCC: (GNU) 3.4.4 (release) (CodeSourcery ARM 2005q3-2)"

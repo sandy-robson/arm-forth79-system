@@ -1,0 +1,434 @@
+_orig
+        jmp     @_cold:24   ; +00   jmp cold start
+        jmp     @_cold:24   ; +04   jmp warm start
+        pfa$    cold_       ; +08   PFA of 1st word for Cold start
+        pfa$    abort_      ; +0C    "   "  "    "   "  Warm   "
+        DC.L    ?x          ; +10  LATEST NFA in FORTH vocabulary
+        DC.L    RUBOUT      ; +14  Erase key code
+; ensure following 4 items in order (copied by 'set_vars_')
+u_reg
+v_reg                       ; +18  Initial user area
+        DC.L    uservars
+p_stack_addr                ; +1C   "    top of Parameter stack
+        DC.L    (stack_low + PSTACKLEN)
+r_stack_addr                ; +20   "     "   " Return      "
+        DC.L    (rstack_low + RSTACKLEN)
+tib_addr                    ; +24   "    Terminal Input Buffer
+        DC.L    tib
+        DC.L    NWIDTH      ; +28  Name field width
+        DC.L    0           ; +2C  Initial value of WARNING
+        DC.L    mon_buf     ; +30     "      "    " FENCE
+        DC.L    cold_       ; +34  CFA of COLD word
+        DC.L    _serout     ; +38  CFA of EMIT word
+        DC.L    ?can_init   ; +3C  LATEST NFA in SYSWORDS vocabulary
+        DC.L    _serin      ; +40  CFA of KEY word - waits if no ser. char avail.
+
+start_thread
+        pfa$  startup_   ; address (pfa) of initial entry thread
+
+_cold
+
+can_interrupt
+serial_interrupt
+stx_int
+txint_wr
+exit_int
+default_svc
+
+; ========= headerless code definitions ==========
+
+_b_to_r     mcode     ; pop .L TOS, push .L to Rstack
+_b_0branch  mcode     ; pop .L TOS, .W true-relative branch-if-0
+_b_branch   mcode     ; .W true-relative branch
+_b_d_lit    mcode     ; push .L TOS from .L via IP
+_b_do       mcode     ; pop 2 .L TOS & push on Rstack
+_b_docol    mcode     ; push .L I to Rstack, load I with W
+_b_docon    mcode     ; push .L value extended from .W constant
+_b_d_docon  mcode     ; push .L value via W reg
+_b_dosys    mcode     ; push .L addr of System variable
+_b_dosyscon
+_b_douse    mcode     ; push .L addr of User variable
+_b_dovar    mcode     ; push .L address from W reg
+_execute    mcode     ; pop .L TOS address, branch to .L addr via W
+_b_i        mcode     ; push .L TOS copied from top of Rstack
+_b_j        mcode     ; push .L TOS copied from (top+2) of Rstack
+_inext      mov.b     #0x0:8,r6h
+_b_leave    mcode     ; set top+1 .L on Rstack to value of top .L of Rstack
+_b_lit      mcode     ; push .L TOS from extended .W via IP
+_b_loop     mcode     ; incr .L top of Rstack, .W true-relative branch-if-count-exceeded
+_b_r_at     mcode     ; push .L TOS copied from top of Rstack
+_b_r_from   mcode     ; pop .L top of Rstack, push .L to TOS
+_restart    mcode     ; branch to 'Cold' start entry
+_b_rp_store 
+_b_semi_s   mcode     ; pop .L from Rstack into IP
+_b_sp_store 
+
+; ============ headerless Sys & User variable definitions ============
+
+_fpoint_    dosys   0x74
+_spoint_    dosys   0x78
+_t_emit_    dosys   0x7C
+
+; ========== headerless Constant definitions ===========
+
+_br_code_   docon   BRANCHCODE
+_bs_        docon   0x08
+_cl_        docon   0x40
+_lf_        docon   0x0A
+_ls_        docon   0x10
+_nbufrs_    docon   NBUFFERS
+_nexttask_  douse   0x04
+_nwidth_    docon   NWIDTH
+_origin_    docon_d  ORIGIN
+_rubout_    docon   RUBOUT
+_sbit_      docon   0x8000
+
+; ============ headerless Threaded definitions ==============
+
+b_comcode_  
+b_compile_
+b_dot_quotes_
+dot_num_    thread ;  ( addr -> )
+dot_asc_    thread ;  ( addr -> )
+hexout_     thread
+plus_origin_
+query_exec_
+query_pairs_
+rp_store_   thread
+rubout_     thread
+b_semi_code_
+b_sign_     thread
+set_vars_   thread
+sp_store_   thread
+startup_    thread
+turnkey_    thread
+
+; ========== Threaded definitions (common) ===========
+
+syswords_
+monwords_
+
+; ============ Sys & User variable definitions (sys words) ===========
+
+_width_     douse   0x14
+_warning_   douse   0x1C
+_use_       dosys   0x28
+_tib_       douse   0x10
+_state_     dosys   0x44
+_scr_       dosys   0x54
+_s_zero_    douse   0x08
+_r_zero_    douse   0x0C
+_r_hash_    dosys   0x50
+_prev_      dosys   0x5C
+_out_       dosys   0x40
+_operator_  douse   0x00
+_offset_    dosys   0x4C
+_nxt_       dosys   0x3C
+_hld_       dosys   0x38
+_fld_       dosys   0x2C
+_fence_     douse   0x18
+_dpl_       dosys   0x30
+_dcols_     dosys   0x34
+_csp_       dosys   0x68
+_blk_       dosys   0x58
+_to_in_     dosys   0x60
+
+; ============ Constant definitions (sys words) =============
+
+_systable_  docon   0x00
+_mem_key_   docon_d  0xA1B2C3D4
+_mem_write_ docon   0xBB
+_mem_read_  docon   0xDD
+_param_write_
+_param_read_
+_rtr_       docon   0x40
+_t_memtable_
+_t_memkey_param_
+_t_mask3_   dosys   0x8E ; check same as _mask3_
+_t_mask2_   dosys   0x8C ; check same as _mask2_
+_t_mask1_   dosys   0x8A ; check same as _mask1_
+_t_mask0_   dosys   0x88 ; check same as _mask0_
+_t_filt3_   dosys   0x96 ; check same as _filt3_
+_t_filt2_   dosys   0x94 ; check same as _filt2_
+_t_filt1_   dosys   0x92 ; check same as _filt1_
+_t_filt0_   dosys   0x90 ; check same as _filt0_
+
+; ============ Sys & User variable definitions (mon words) ===========
+
+_dp_        dosys   0x64
+_device_    douse   0x20          ; !!! 2 cells
+_current_   dosys   0x70
+_context_   dosys   0x6C
+_base_      dosys   0x48
+
+; ============= Constant definitions (mon words) ============
+
+_true_      docon     0xFFFF
+_false_     docon     0x00
+_esc_       docon   0x1B
+_c_r_       docon   0x0D
+_bl_        docon   0x20
+_one_       docon     0x01
+_zero_      docon     0x00
+
+; ========== Threaded definitions (sys words) ===========
+
+?sign_      thread
+serial_init_
+pfa_        thread
+pad_        thread
+number_
+nfa_        thread
+literal_    thread
+lfa_        thread
+latest_     thread
+interpret_  thread
+immediate_
+hold_       thread
+dliteral_   thread
+definitions_
+create_
+convert_
+compile_    thread
+cfa_        thread
+block_      thread              ;
+end_sq_bracket_
+x_compile_  thread
+sq_bracket_
+query_error_
+query_delim_
+query_csp_
+query_comp_
+angle_hash_
+hash_s_     thread
+hash_angle_ thread
+hash_       thread
+store_csp_
+
+; ========== Threaded definitions (mon words) ===========
+
+words_      thread
+word_       thread
+within_
+while_      thread
+variable_
+user_
+until_      thread
+u_d_query_  thread ;  ( addr -> )
+u_query_symb_
+u_div_mod_   thread
+u_dot_      thread
+type_       thread
+toggle_
+then_       thread
+spaces_     thread
+space_      thread
+smudge_
+repeat_     thread
+r_at_       thread
+r_from_     thread
+quit_       thread
+query_      thread
+page_       thread  ; (not needed for Hyperterm)
+ok_         thread
+mod_        thread
+message_
+m_div_mod_   thread
+loop_       thread
+leave_      thread
+key_        thread
+j_          thread
+if_         thread
+i_prime     thread
+i_          thread
+hex_        thread
+here_       thread
+hdump_      thread
+forget_     thread
+find_       thread
+f2i_        thread
+expect_     thread
+exit_
+error_      thread
+emit_       thread
+else_       thread
+dsec_       thread ;  ( n -> )
+do_         thread
+decimal_    thread
+dconstant_
+d_comma_    thread
+d_query_    thread ;  ( addr -> )
+cr_         thread
+count_      thread
+constant_
+cold_       thread
+c_query_    thread ;  ( addr -> )
+c_comma_    thread
+bell_       thread
+begin_      thread
+back_       thread
+ascii_      thread
+allot_      thread
+again_      thread
+adr_comma_  thread
+abort_      thread
+query_stack_
+query_symb_
+to_r_       thread
+semi_       thread
+colon_      thread
+div_mod_    thread
+div_        thread
+dot_stack_  thread
+dot_r_      thread ;  (n r -> )
+dot_quotes_
+dot_        thread ;  ( n -> )
+comma_      thread
+brackets_
+tick_       thread
+
+; =========== Code definitions (sys words) ===========
+
+_spi_enable mcode     ; enable SPI xfer - clear /CS to 0
+_sci_write  mcode     ; pop .B from TOS, write to CAN chip
+_sci_read   mcode     ; read from CAN chip, push .B to TOS
+_enclose
+_adr_at     mcode     ; pop .L TOS addr, fetch 3bytes via addr, push .L to TOS
+_b_m_div_mod
+minus_trailing_
+_b_find     mcode     ; pop .L TOS nfa list start, pop .L addr name sought
+_b_div_mod  mcode     ; take .L num & denom (TOS) and leave .W rem & quot (TOS)
+
+; ============ Code definitions (mon words) ==============
+
+_xor        mcode     ; pop 2 .L TOS, replace XOR .L
+_u_at       mcode     ; pop .L TOS addr, fetch .W via addr, push .L to TOS
+_u_lt       mcode     ; pop & compare 2 .L TOS, replace with -1 .L if u<, else 0 .L
+_u_star     mcode     ; pop 2 .W TOS, replace with unsigned multiplicand .L TOS 
+_swap_bytes mcode     ; swap bytes in .W TOS
+_swap       mcode     ; swap 2 .L TOS
+_sp_at      mcode     ; fetch SP value, push .L to TOS
+_set_baud
+_serout     mcode     ; wait for tx buffer space, pop .L TOS, send .B byte to serial o/p
+_serin      mcode     ; fetch serial byte, extend & push .L to TOS
+_rot        mcode     ; rotate 3 .L TOS
+_pick       mcode     ; pop .L TOS, fetch .L at offset from TOS, push .L to TOS
+_over       mcode     ; fetch .L above TOS, push .L to TOS
+_or         mcode     ; pop 1 .L TOS, 'Or' with .L TOS, copy result to .L TOS
+_not        mcode     ; test .L TOS, replace with 0 .L if <>0, else -1 .L
+_min        mcode     ; pop 2 .L TOS, replace with the .L min value
+_max        mcode     ; pop 2 .L TOS, replace with the .L max value
+_ints_on    mcode     ;  enable interrupts
+_ints_off   mcode     ;  disable interrupts
+_fill       mcode     ; pop 3 .L TOS, store lsb of 3rd .L via 1st .L,
+_dup        mcode     ; fetch .L TOS, push .L copy to TOS
+_drop       mcode     ; discard .L TOS
+_d_negate   mcode     ; negate .L TOS
+_digit      mcode     ; if .B TOS-1 valid digit for .B base TOS,
+_d_at       mcode     ; pop .L TOS addr, fetch .L via addr, push .L to TOS
+_d_plus_store
+_d_store    mcode     ; pop 2 .L, store .L via addr
+_c_move     mcode     ; pop 3 .L TOS, read byte via 1st .L, store via 2nd .L,
+_can_until
+_c_at       mcode     ; pop .L TOS, fetch .B via addr, push extended .L to TOS
+_c_plus_store
+_c_store    mcode     ; pop 2 .L TOS, store .B via addr
+_and        mcode     ; pop 1 .L TOS, 'And' with .L TOS, copy result to .L TOS
+_adr_store  mcode     ; pop 2 .L, store 3bytes via addr
+_abs        mcode
+_at         mcode     ; pop .L TOS addr, fetch .W via addr, sign extend, push .L to TOS
+_qserin     mcode     ; fetch serial i/p queue length, push .L to TOS
+_query_dup
+_q_can
+_rshift16   mcode     ; replace .L TOS with .W MSW
+_rshift_n   mcode     ; shift .L TOS-1 by .B places right
+_gt         mcode     ;  pop & compare 2 .L TOS, replace with -1 .L if >, else 0 .L
+_eq         mcode     ; pop & compare 2 .L TOS, replace with -1 .L if =, else 0 .L
+_lshift16   mcode     ; replace .L TOS with .W LSW << 16
+_lt         mcode     ;  pop & compare 2 .L TOS, replace with -1 .L if <, else 0 .L
+_minus_store
+_two_star   mcode     ; multiply .L TOS by 2
+_two_div    mcode     ; divide .L TOS by 2
+_two_drop   mcode     ; discard 2 .L TOS
+_two_minus  mcode     ; pop .L TOS, replace with .L result of subtracting 2
+_two_plus   mcode     ; pop .L TOS, replace with .L result of adding 2
+_one_minus  mcode     ; pop .L TOS, replace with .L result of subtracting 1
+_one_plus   mcode     ; pop .L TOS, replace with .L result of adding 1
+_zero_gt    mcode
+_zero_eq    mcode     ; test .L TOS, replace with -1 .L if 0, else 0 .L
+_zero_lt    mcode
+_minus      mcode     ; pop 2 .L TOS, replace with .L result of subtraction
+_plus_store
+_plus       mcode     ; pop .L, add to .L TOS
+_store      mcode     ; pop 2 .L, store .W value via .L addr
+
+; ============ Application definitions (sys words) ============
+
+write_payload_  thread ;  ( -> )
+write_eid_  thread ;  ( -> )
+write_can_  thread ;  ( -> )
+write2515_  thread ;  ( byte addr -> )
+wait_can_   thread ;  ( timeout -> )
+status2515_  thread ; ( -> byte )
+set_can_regs_  thread ;   ( vn ... v2 v1 n raddr -> )
+rts2515_    thread ;  ( canbuf -> )
+reset2515_  thread ;  ( -> )
+read_payload_  thread ;  ( -> )
+read_eid_   thread ;  ( -> )
+read_can_   thread ;  ( -> )
+read2515_   thread ;  ( addr -> byte )
+put_table_  thread ;  ( table -> )
+put_rtr_    thread ;  ( rtr -> )
+put_req_    thread ;  ( requester -> )
+put_param_  thread ;  ( parameter -> )
+put_mtype_  thread ;  ( msg_type -> )
+put_len_    thread ;  ( len -> )
+put_act_    thread ; ( actor -> )
+modify2515_  thread ; ( byte mask addr -> )
+get_table_  thread ;  ( -> table )
+get_rtr_    thread ;  ( -> rtr )
+get_req_    thread ;  ( -> requester)
+get_param_  thread ;  ( -> parameter )
+get_mtype_  thread ;  ( -> msg_type )
+get_len_    thread ;  ( -> len )
+get_act_    thread ; ( -> actor )
+clear_wbuf_ thread ;  ( -> )
+check_config_
+can_rx_setup_  thread ;  ( -> )
+can_init_   thread ;  ( -> )
+
+; ============= Application definitions (mon words) ============
+
+wt_         thread ;  ( addr data len -> )
+wp_         thread ;  ( table param len -> )
+_wdata_     docon   wbuf_pay
+_tnode_     dosyscon  0x82 ; check same as _t_tnode_
+_t_tnode_   dosys   0x82 ; check same as _tnode_
+target_     thread ; ( node table key_param -> )
+rpt_        thread ;  ( dSec -> )
+rp_         thread ;  ( table param len -> val )
+_rdata_     docon   rbuf_pay
+rd_         thread ;  ( addr data len -> )
+put_data_   thread ;  ( d0 .. dn n -> )
+_memtable_  dosyscon  0x84 ; check same as _t_memtable_
+_memkey_param_
+_mask3_
+_mask2_
+_mask1_
+_mask0_
+_filt3_
+_filt2_
+_filt1_
+_filt0_
+enable_memdata_
+dump_       thread ;  ( addr n -> )
+_dnode_     dosyscon  0x80 ; check same as _t_dnode_
+_t_dnode_   dosys   0x80 ; check same as _dnode_
+disable_memdata_
+dot_wp_     thread ;  ( -> )
+dot_rp_     thread ;  ( -> )
+
+; ========== embedded dictionary root  ===========
+
+x_          thread
+            END

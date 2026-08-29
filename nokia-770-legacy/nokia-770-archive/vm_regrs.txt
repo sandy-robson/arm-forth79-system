@@ -1,0 +1,20 @@
+; attila regr. assignments
+; ------------------------
+
+; VM             AS
+; ac	 %r0	 a1   1st func arg & int func result
+; op	 %r1	 a2   2nd func arg
+; mq	 %r2	 a3   3rd func arg
+; ach	 %r3	 a4   4th func arg
+; oph	 %r4	 v1   reg var
+; mqh	 %r5	 v2   reg var
+; aptr   %r6	 v3   reg var
+; vp	 %r7	 v4   reg var
+; up	 %r8	 v5   reg var
+; rp     %r9	 v6   reg var
+; sl     %r10	 sl   stack limit
+; wp	 %r11	 fp   arg ptr
+; ip	 %r12	 ip   temp workspace
+; sp	 %r13    sp   stack ptr
+; lr	 %r14    lr   link reg (workspace?)
+; pc	 %r15    pc   prog cntr
