@@ -1,0 +1,33 @@
+
+hostname -I
+
+nmap -sn 192.168.1.00/24
+
+ssh pi@192.168.1.204  (via Co-op router)
+
+./attila
+
+[ host -> pi ]
+scp myfile.ext {myfile2.ext} pi@192.168.1.204:
+
+[ pi -> host ]
+scp pi@192.168.1.204: myfile.ext
+
+eth0      Link encap:Ethernet  HWaddr 00:1e:68:8c:2e:5a  
+wlan0     Link encap:Ethernet  HWaddr 00:22:68:a9:f0:41
+
+RPi MAC 
+b8:27:eb:39:f0:9c
+
+find / -type f -iname "filename*"
+
+(sudo) raspi-config (from prompt)
+
+(sudo) mount -o remount,rw \
+
+p1
+..5.......1
+
+make clean
+make
+

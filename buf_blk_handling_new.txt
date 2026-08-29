@@ -1,0 +1,61 @@
+fcb fcbname filename.txt
+  - create file control block named 'fcbname',
+    structure:-
+    - 0x00 current buffer addr;
+    - 0x04 fcb-marker
+    - 0x06 open-mode;
+    - 0x08 file-ID;
+    - 0x0C file-length;
+    - 0x10 { r/w position };
+    - 0x14 path/name string;
+
+  <fcbname>
+    - set fcb_ptr to fcbname,
+    {- set prev to buffer in current fcb ? }
+
+
+n fcb_offs <fcb_param>
+  - define <fcb_param> with fcb offset index n
+
+  <fcb_param>
+    - check FCB ID at current fcb
+      - if valid, add n to fcb addr
+      - else, report invalid fcb & abort
+
+
+buffer mode file
+  {check fcb is valid - else report error }
+  - if mode = wt
+    - open file & write from fcb buf
+    - clear file-changed flag
+  - else
+    - if mode = rd
+      - open file & read into fcb buf
+      - and record length in fcb
+    - else report file mode error
+
+
+next_buffer 
+  - if next buffer needs writing
+     - write next buffer
+  - return start addr of next buffer
+
+n block
+  - if file assigned to current fcb is not in buffer
+    - get next buffer addr
+    - setup fcb
+    - read file into next buffer
+    - if error
+      - report error
+    - set buffer to fcb
+    - set prev to buffer in current fcb
+  - if n > read block len
+    - report block range error
+  - return start addr of block n in buffer
+  - ***
+
+
+
+{load error} where 
+ - display filename, block, line & word where
+   error occurred

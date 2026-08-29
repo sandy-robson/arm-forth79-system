@@ -1,0 +1,27 @@
+( float to integer test ) hex
+: task ;
+
+: f2i  ( f -> d )
+  dup 80000000 and >r
+  dup 40000000 and
+  if ( >= abs 2 )
+   dup 3F000000 and 
+   2/ 2/ 2/ 2/  2/ 2/ 2/ 2/  >>16  >r
+   dup 00800000 and >r
+   00FFFFFF and  r>
+   if ( explicit bit )
+    2* 2*
+   else ( implicit bit )
+    00800000 or 2*
+   then
+   0B r> - 0
+   do  2/ 2/ loop  1+ 2/
+  else ( < abs 2 )
+    3FFFFFFF and  3F000000 <
+   if  0  
+   else  3FC00000 < 
+    if  1  else  2 then
+   then
+  then
+  r> if  dnegate  then ;
+

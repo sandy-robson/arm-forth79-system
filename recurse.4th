@@ -1,0 +1,1 @@
+( 1   Recursion example/benchmark )  : self  ( n1 -> n2 )  sys [ smudge ]    dup 2 <     if    drop 1    else  dup 1-  self          swap 2-  self +    then  ;     smudge  attila    decimal ( 37 self .   ...takes 24s )      endload                 
