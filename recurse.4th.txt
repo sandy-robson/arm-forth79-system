@@ -1,1 +1,0 @@
-( 1   Load recursive Fibonacci )  : recurse-task ;  : self  sys [ smudge ]      dup 2 <      if  drop 1      else  dup 1- self  swap               2- self  +     then  ;  smudge  attila                                endload  
