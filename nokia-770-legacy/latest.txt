@@ -1,0 +1,1 @@
+cp /media/mmc1/thread.s.txt thread.s

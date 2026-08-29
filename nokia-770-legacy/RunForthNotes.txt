@@ -1,0 +1,11 @@
+Run Forth
+---------
+(Run X Termina in Extras on H2G2)
+cd /usr/bin
+attila
+Dev Forth
+---------
+
+- on entry, type 'sudo gainroot
+- then go to source dir 'cd /usr/src'- edit file, eg. 'vi thread.s'- save copy to filename_bak.ext- compile with 'gcc thread.s attila.c'- then copy a.out to /usr/bin & run with 'try'/usr/src $ cat sed-nocrs/\015/ /gsed -f cmdfile infile > outfilefiles in /usr/bin:==================  attila  (bin)  ------  bak  ---cp thread_macros.s thread_macros_bak.scp thread.s thread_bak.scp attila.c attila_bak.c  clr (only use before 'edits')  ---rm thread*.srm attila.c  edits (only use after 'clr')  -----cp /media/mmc1/thread.s.txt thread_new.scp /media/mmc1/thread_macros.s.txt thread_macros_new.scp /media/mmc1/attila.c.txt attila_new.ccp /media/mmc1/test.c.txt test_new.c  source (doesn't work!)  ------cd /usr/src  try (use to test re-compile)  ---mv a.out /usr/bin/attilaattila  wtest (bin of wtest.c)
+  -----

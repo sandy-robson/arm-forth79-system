@@ -1,0 +1,20 @@
+file_buf (n -> addr )
+  get next file bfr addr
+  if next bfr contents changed
+    write next bfr contents to fcb file
+    clear changed flag
+  assoc bfr with current fcb
+  set prev to bfr
+  return bfr addr
+
+
+
+block ( n -> baddr )
+  if cur fcb bfr addr <> prev bfr addr
+    get a file bfr addr
+    read file
+    assoc bfr with fcb
+    set prev to bfr
+  if n not in range for fcb
+    report block range error
+  calc baddr from bfr start

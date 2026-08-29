@@ -1,0 +1,3 @@
+( file loader ): fred_task ; 
+fcb fredfile /media/mmc1/f/fred.f.txt  fredfile  rd file  1 load 
+endload

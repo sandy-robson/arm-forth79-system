@@ -1,0 +1,74 @@
+fcb ( ${fcbname filename.txt} -> )
+
+  create file control block named 'fcbname',
+    structure:-
+    - 0x00 current buffer addr;
+    - 0x04 fcb-marker    - 0x06 open-mode;
+    - 0x08 file-ID;
+    - 0x0C file-length;
+    - 0x10 { r/w position };
+    - 0x14 path/name string;
+
+
+  <fcbname>
+    set fcb_ptr to fcbname,
+
+
+fcb_offs (n ${fcb_param} -> )
+  define fcb_param with fcb offset index n
+  <fcb_param>
+    [if fcb is not valid, report error]
+    if current fcb marker valid
+      add n to current fcb addr
+    else
+      report invalid fcb & abort
+
+file ( mode -> )
+
+  [if fcb is not valid, report error]
+
+  if mode = wt
+    open file & write from buf
+    clear file-changed flag in fcb
+  else
+    if mode = rd
+      open file & read into buf
+      record length in fcb
+      assoc bfr with current fcb
+      update prev/use
+    else report file mode error
+
+
+file_buf (n -> addr )
+
+  [if fcb is not valid, report error]
+
+  get next file bfr addr
+  if next bfr contents changed
+    write next bfr contents to fcb file
+    clear changed flag
+  return bfr addr
+
+block ( n -> buf_addr )
+  [if fcb is not valid, report error]
+
+  if current fcb file not in bfr
+    get next file bfr addr
+    read file into bfr
+  if n not in range for fcb
+    report block range error
+  calc buf_addr from bfr start
+load
+
+  blk d@ >r  blk d!
+  >in d@ >r  0 >in d!
+  prev d@ >r
+  fcb_ptr d@ dup  d@ prev d! >r
+  interpret
+  r> fcb_ptr d!
+  r> prev d!
+  r> >in d!
+  r> blk d!
+
+where {load error}
+  display filename, block, line & word where error occurred

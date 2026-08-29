@@ -1,0 +1,20 @@
+#include <stdio.h>
+#include <unistd.h>
+char buf[512];
+#define BPBUF (1024 * 16)
+
+int main(int argc, char *argv[])
+{ 
+  FILE *pFile;
+  int size = BPBUF;
+
+  pFile = fopen ("/media/mmc1/wblock.txt", "w");
+  if (pFile)
+  { 
+    printf(" wfile opened ok\n");
+    sprintf(buf,"textline0\ntextline1\n");
+    fwrite(buf,size,1,pFile);
+    fclose (pFile); 
+  } 
+  return 0;
+}

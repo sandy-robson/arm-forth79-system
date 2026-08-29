@@ -1,0 +1,78 @@
+   1              		.cpu arm10tdmi
+   2              		.fpu softvfp
+   3              		.file	"wtest.c"
+   4              		.section	.rodata
+   5              		.align	2
+   6              	.LC0:
+   7 0000 2F6D6564 		.ascii	"/media/mmc1/wblock.txt\000"
+   7      69612F6D 
+   7      6D63312F 
+   7      77626C6F 
+   7      636B2E74 
+   8 0017 00       		.align	2
+   9              	.LC1:
+  10 0018 7700     		.ascii	"w\000"
+  11 001a 0000     		.align	2
+  12              	.LC2:
+  13 001c 20776669 		.ascii	" wfile opened ok\n\000"
+  13      6C65206F 
+  13      70656E65 
+  13      64206F6B 
+  13      0A00
+  14 002e 0000     		.align	2
+  15              	.LC3:
+  16 0030 74657874 		.ascii	"textline0\n"
+  16      6C696E65 
+  16      300A
+  17 003a 74657874 		.ascii	"textline1\n\000"
+  17      6C696E65 
+  17      310A00
+  18 0045 000000   		.text
+  19              		.align	2
+  20              		.global	main
+  21              		.type	main, %function
+  22              	main:
+  23              		@ args = 0, pretend = 0, frame = 16
+  24              		@ frame_needed = 1, uses_anonymous_args = 0
+  25 0000 0DC0A0E1 		mov	ip, sp
+  26 0004 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+  27 0008 04B04CE2 		sub	fp, ip, #4
+  28 000c 10D04DE2 		sub	sp, sp, #16
+  29 0010 10000BE5 		str	r0, [fp, #-16]
+  30 0014 14100BE5 		str	r1, [fp, #-20]
+  31 0018 0139A0E3 		mov	r3, #16384
+  32 001c 1C300BE5 		str	r3, [fp, #-28]
+  33 0020 50009FE5 		ldr	r0, .L3
+  34 0024 50109FE5 		ldr	r1, .L3+4
+  35 0028 FEFFFFEB 		bl	fopen
+  36 002c 18000BE5 		str	r0, [fp, #-24]
+  37 0030 18301BE5 		ldr	r3, [fp, #-24]
+  38 0034 000053E3 		cmp	r3, #0
+  39 0038 0B00000A 		beq	.L2
+  40 003c 3C009FE5 		ldr	r0, .L3+8
+  41 0040 FEFFFFEB 		bl	printf
+  42 0044 38009FE5 		ldr	r0, .L3+12
+  43 0048 38109FE5 		ldr	r1, .L3+16
+  44 004c FEFFFFEB 		bl	sprintf
+  45 0050 2C009FE5 		ldr	r0, .L3+12
+  46 0054 1C101BE5 		ldr	r1, [fp, #-28]
+  47 0058 0120A0E3 		mov	r2, #1
+  48 005c 18301BE5 		ldr	r3, [fp, #-24]
+  49 0060 FEFFFFEB 		bl	fwrite
+  50 0064 18001BE5 		ldr	r0, [fp, #-24]
+  51 0068 FEFFFFEB 		bl	fclose
+  52              	.L2:
+  53 006c 0000A0E3 		mov	r0, #0
+  54 0070 0CD04BE2 		sub	sp, fp, #12
+  55 0074 00A89DE8 		ldmfd	sp, {fp, sp, pc}
+  56              	.L4:
+  57              		.align	2
+  58              	.L3:
+  59 0078 00000000 		.word	.LC0
+  60 007c 18000000 		.word	.LC1
+  61 0080 1C000000 		.word	.LC2
+  62 0084 00000000 		.word	buf
+  63 0088 30000000 		.word	.LC3
+  64              		.size	main, .-main
+  65              		.comm	buf,512,1
+  66              		.ident	"GCC: (GNU) 3.4.4 (release) (CodeSourcery ARM 2005q3-2)"

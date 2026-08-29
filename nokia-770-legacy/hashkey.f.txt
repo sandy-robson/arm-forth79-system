@@ -1,0 +1,48 @@
+( string hash key generator ) 
+
+
+( string can contain a-z, A-Z, 0-9, '_' & '-' ) 
+( 64 unique char codes ) 
+
+decimal 
+
+: charcode ( char -> code ) 
+  ascii a 1- over < 
+  over ascii z 1+ < and 
+  if 
+    ascii a 1- - 
+  else 
+   ascii A 1- over < 
+   over ascii Z 1+ < and 
+   if 
+    ascii A 1- - 26 +
+   else
+    ascii 0 1- over < 
+    over ascii 9 1+ < and
+  if 
+    ascii 0 1- - 52 + 
+  else 
+    ascii _ over = 
+   if 
+    drop 63
+   else 
+    drop 0 
+   then then then then  ; 
+
+: s ( ${string} -> ) 
+  create bl word c@ 1+ allot 
+  does> count  ; 
+
+: t  ( addr num -> total ) 
+  >r 0 r>  0 
+  do 
+    over i + c@ charcode 
+    i 2* 1+ u*  +
+  loop 
+  swap drop  ; 
+
+
+: k ( addr num -> ) 
+  over over t dup cr . 127 and 2* . type  ; 
+
+endload

@@ -1,0 +1,44 @@
+fcb fcbname filename.txt
+  - creates file control block named 'fcbname',
+    structure:-    - 0x00 current buffer addr;
+    - 0x04 open-mode + fcb-ID;
+    - 0x08 file-pointer;
+    - 0x0C file-length;
+    - 0x10 { r/w position };
+    - 0x14 path/name string;
+
+  <fcbname>
+    - sets fcb_ptr to fcbname
+
+n fcb_offs <offs_lbl>
+  - defines  offs_lbl  with fcb offset index n
+
+  <offs_lbl>
+    - checks FCB ID at current fcb
+      - if valid, adds n to fcb addr
+      - else, reports invalid fcb & aborts
+
+rd file
+  { - checks fcb is valid - else reports error }  - if file already open,
+    returns current buffer addr
+  - else
+    - if buffer free, opens file &
+      reads into next avail buf and records length
+      in fcb
+    - else reports error
+
+n block
+  - if file assigned to current fcb not in buffer
+    - if next buffer 
+next buffer unavailable
+  - else returns start addr (in file buffer) of block n
+  - ***
+
+n buffer {n effectively = 1}
+  - returns start addr of next available buffer in
+    file-buffer space
+  - ***
+
+where {following load error}
+ - displays filename, block, line & word where
+   error occurred

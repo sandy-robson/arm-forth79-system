@@ -1,0 +1,77 @@
+ARM GAS  /tmp/ccj4HVfl.s 			page 1
+
+
+   1              		.cpu arm10tdmi
+   2              		.fpu softvfp
+   3              		.file	"test.c"
+   4              		.section	.rodata
+   5              		.align	2
+   6              	.LC0:
+   7 0000 2F6D6564 		.ascii	"/media/mmc1/block.txt\000"
+   7      69612F6D 
+   7      6D63312F 
+   7      626C6F63 
+   7      6B2E7478 
+   8 0016 0000     		.align	2
+   9              	.LC1:
+  10 0018 7200     		.ascii	"r\000"
+  11 001a 0000     		.align	2
+  12              	.LC2:
+  13 001c 2066696C 		.ascii	" file opened ok\n\000"
+  13      65206F70 
+  13      656E6564 
+  13      206F6B0A 
+  13      00
+  14 002d 000000   		.text
+  15              		.align	2
+  16              		.global	main
+  17              		.type	main, %function
+  18              	main:
+  19              		@ args = 0, pretend = 0, frame = 16
+  20              		@ frame_needed = 1, uses_anonymous_args = 0
+  21 0000 0DC0A0E1 		mov	ip, sp
+  22 0004 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+  23 0008 04B04CE2 		sub	fp, ip, #4
+  24 000c 10D04DE2 		sub	sp, sp, #16
+  25 0010 10000BE5 		str	r0, [fp, #-16]
+  26 0014 14100BE5 		str	r1, [fp, #-20]
+  27 0018 60009FE5 		ldr	r0, .L4
+  28 001c 60109FE5 		ldr	r1, .L4+4
+  29 0020 FEFFFFEB 		bl	fopen
+  30 0024 18000BE5 		str	r0, [fp, #-24]
+  31 0028 18301BE5 		ldr	r3, [fp, #-24]
+  32 002c 000053E3 		cmp	r3, #0
+  33 0030 0F00000A 		beq	.L2
+  34 0034 4C009FE5 		ldr	r0, .L4+8
+  35 0038 FEFFFFEB 		bl	printf
+  36 003c 48009FE5 		ldr	r0, .L4+12
+  37 0040 021CA0E3 		mov	r1, #512
+  38 0044 18201BE5 		ldr	r2, [fp, #-24]
+  39 0048 FEFFFFEB 		bl	fgets
+  40 004c 38009FE5 		ldr	r0, .L4+12
+  41 0050 FEFFFFEB 		bl	printf
+  42 0054 30009FE5 		ldr	r0, .L4+12
+  43 0058 021CA0E3 		mov	r1, #512
+  44 005c 18201BE5 		ldr	r2, [fp, #-24]
+  45 0060 FEFFFFEB 		bl	fgets
+  46 0064 20009FE5 		ldr	r0, .L4+12
+  47 0068 FEFFFFEB 		bl	printf
+  48 006c 18001BE5 		ldr	r0, [fp, #-24]
+  49 0070 FEFFFFEB 		bl	fclose
+ARM GAS  /tmp/ccj4HVfl.s 			page 2
+
+
+  50              	.L2:
+  51 0074 0000A0E3 		mov	r0, #0
+  52 0078 0CD04BE2 		sub	sp, fp, #12
+  53 007c 00A89DE8 		ldmfd	sp, {fp, sp, pc}
+  54              	.L5:
+  55              		.align	2
+  56              	.L4:
+  57 0080 00000000 		.word	.LC0
+  58 0084 18000000 		.word	.LC1
+  59 0088 1C000000 		.word	.LC2
+  60 008c 00000000 		.word	buf
+  61              		.size	main, .-main
+  62              		.comm	buf,512,1
+  63              		.ident	"GCC: (GNU) 3.4.4 (release) (CodeSourcery ARM 2005q3-2)"

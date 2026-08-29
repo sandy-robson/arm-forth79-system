@@ -1,0 +1,7 @@
+( string hash key generator )   : task  ; 
+fcb hashkey /media/mmc1/hashkey.f.txt 
+hashkey  rd file  1 load  
+swords hashkey fcb_buf d@ use d! attila   
+fcb hashdata /media/mmc1/hashdata.f.txt 
+hashdata  rd file   1 load  
+endload

@@ -1,0 +1,14 @@
+( file loader )cr ." scr1 lfile"
+
+: where  ( -> )
+  cr ." in file: "
+  fcb_ptr d@
+  swords nfa dup 1+ swap c@ 1F and type
+  cr ."  source: " fcb_buf d@ r# d@ 1F max 
+  here c@ 1F and -  + 20 type
+  cr 9 spaces ." ^^^       "  ;
+attila
+
+fred
+cr ." scr2 lfile "
+endload

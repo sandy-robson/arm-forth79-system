@@ -1,0 +1,405 @@
+file:
+  stat   4
+  .ascii "fil"
+  term   'e'
+  link   find
+file_:
+  thread	/*  read/write -> */
+/*
+ */
+; if 'mode' <> read, report error 0x21
+  cfa    _dup
+  cfa    _rd_
+  cfa    _c_at
+  cfa    _minus
+  cfa    _b_lit
+  val    0x21
+  cfa    query_error_
+; set fcb mode to 'r'
+  cfa    _fcb_mode_
+  cfa    _c_store
+  cfa    _fcb_name_
+  cfa    _fcb_mode_
+  cfa    _fopen
+  cfa    _dup
+; if file open fails, report open error
+  cfa    _zero_eq
+  cfa    _b_lit
+  val    0x20
+  cfa    query_error_
+; else store file ID in fcb
+  cfa    _fcb_fid_
+  cfa    _d_store
+; get next file buf addr
+  cfa    fbuffer_
+; store fcb addr in buffer fcb field
+  cfa    _fcb_ptr_
+  cfa    _d_at
+  cfa    _over
+  cfa    _two_minus
+  cfa    _two_minus
+  cfa    _d_store
+; store buffer addr in fcb buf field
+  cfa    _dup
+  cfa    _fcb_buf_
+  cfa    _d_store
+;  cfa    _dup  ; *** need copy? ***
+; set line char index to 0
+  cfa    _zero_
+; fill 1st buffer 'screen' with bl
+;  cfa    _over
+;  cfa    _bbuf_
+;  cfa    blanks_
+; read char from file
+fil1:
+  cfa    _fcb_fid_
+  cfa    _d_at
+  cfa    _fgetc
+; if not EOF
+  cfa    _b_lit
+  val    0xFFFFFFFF
+  cfa    _over
+  cfa    _minus
+  cfa    _b_zbranch
+  addr   fil4
+; if char < bl
+  cfa    _dup
+  cfa    _bl_
+  cfa    _lt
+  cfa    _b_zbranch
+  addr   fil2
+; if char = n/l
+  cfa    _n_l_
+  cfa    _eq
+  cfa    _b_zbranch
+  addr   fil3
+; fill remaining line chars with bl
+  cfa    _over
+  cfa    _over
+  cfa    _plus
+  cfa    _over
+  cfa    _cl_
+  cfa    _swap
+  cfa    _minus
+  cfa    blanks_
+; discard char-position
+  cfa    _drop
+; add screen-width to buffer offset
+  cfa    _cl_
+  cfa    _plus
+; reset char_position to 0
+  cfa    _zero_
+  cfa    _b_branch
+  addr   fil3
+; {printable char}
+fil2:
+  cfa    _b_to_r
+; ***  incr len by 1  ***
+; calc next buffer store position
+  cfa    _over
+  cfa    _over  
+  cfa    _plus
+; store char in buffer
+  cfa    _b_r_from
+  cfa    _swap
+  cfa    _c_store
+; incr char position in line index by 1
+  cfa    _one_plus
+; limit to max position
+  cfa    _cl_
+  cfa    _one_minus
+  cfa    _min
+; {non-print char, not n/l; *** discard? *** }
+fil3:
+  cfa    _b_branch
+  addr   fil1
+; on EOF ...
+fil4:
+; drop indices
+;  cfa    _two_drop  /* only need 3 drops? */
+  cfa    _drop
+  cfa    _two_drop
+; close file
+  cfa    _fcb_fid_
+  cfa    _d_at
+  cfa    _fclose
+; set file ID to 0
+  cfa    _zero_
+  cfa    _fcb_fid_
+  cfa    _d_store
+  exit
+
+fcb_offs:
+  stat   8 
+  .ascii "fcb_off"
+  term   's'
+  link   file
+fcb_offs_:
+  thread
+  cfa    create_
+  cfa    d_comma_
+  cfa    b_semi_code_
+_fcb_offs:
+  does_thread
+  cfa    _d_at
+  cfa    _fcb_ptr_
+  cfa    _d_at
+  cfa    _dup
+  cfa    _b_lit
+  val    0x04
+  cfa    _plus
+  cfa    _u_at
+  cfa    _b_lit
+  val    0xFFF0
+  cfa    _and
+  cfa    _b_lit
+  val    0xFCB0
+  cfa    _minus
+  cfa    _b_lit
+  val    0x22       /* invalid fcb */
+  cfa    query_error_
+  cfa    _plus
+  exit
+
+fcb_name:
+  stat   8
+  .ascii "fcb_nam"
+  term   'e'
+  link   fcb_offs
+_fcb_name_:
+  addr   _fcb_offs
+  val    0x14
+
+fcb_mode:
+  stat   8
+  .ascii "fcb_mod"
+  term   'e'
+  link   fcb_name
+_fcb_mode_:
+  addr   _fcb_offs
+  val    0x06
+
+fcb_mark:
+  stat   8
+  .ascii "fcb_mar"
+  term   'k'
+  link   fcb_mode
+_fcb_mode_:
+  addr   _fcb_offs
+  val    0x04
+
+fcb_len:
+  stat   7
+  .ascii "fcb_le"
+  term   'n'
+  link   fcb_mark
+_fcb_len_:
+  addr   _fcb_offs
+  val    0x0C
+
+fcb_fid:
+  stat   7
+  .ascii "fcb_fi"
+  term   'd'
+  link   fcb_len
+_fcb_fid_:
+  addr   _fcb_offs
+  val    0x08
+
+fcb_buf:
+  stat   7
+  .ascii "fcb_bu"
+  term   'f'
+  link   fcb_fid
+_fcb_buf_:
+  addr   _fcb_offs
+  val    0x00
+
+fcb:
+  stat   3
+  .ascii "fc"
+  term   'b'
+  link   fcb_store
+fcb_:
+  thread
+  cfa    create_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _b_lit
+  val    0xFCB0
+  cfa    comma_
+  cfa    _zero_
+  cfa    comma_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _zero_
+  cfa    d_comma_
+  cfa    _bl_
+  cfa    word_
+  cfa    _one_plus
+  cfa    _dup
+  cfa    _one_minus
+  cfa    _dup
+  cfa    _c_at
+  cfa    _dup
+  cfa    _b_to_r
+  cfa    _cmove
+  cfa    _b_r_from
+  cfa    allot_
+  cfa    _zero_
+  cfa    c_comma_
+  cfa    here_
+  cfa    _align
+  cfa    _dp_
+  cfa    _d_store
+  cfa    b_semi_code_
+_fcb:
+  does_thread
+/* !!!
+
+  cfa    _dup
+ */
+  cfa    _fcb_ptr_
+  cfa    _d_store
+  cfa    _fcb_buf_
+  cfa    _d_at
+  cfa    _query_dup
+  cfa    _b_zbranch
+  addr   fcb1
+  cfa    _prev_
+  cfa    _d_store
+fcb1:
+  exit
+
+<< remove 'with_fcb' definition >>
+
+plus_buf:
+  stat   4
+  .ascii "+bu"
+  term   'f'
+  link   cfaddr
+plus_buf_:
+  thread
+  cfa    _bbuf_
+  cfa    _plus
+  cfa    _two_plus
+  cfa    _two_plus
+  cfa    _dup
+  cfa    limit_
+  cfa    _u_lt
+  cfa    _not
+  cfa    _b_zbranch
+  addr   pl_frst1
+  cfa    _drop
+  cfa    first_
+pl_frst1:
+  cfa    _dup
+  cfa    _prev_
+  cfa    _d_at
+  cfa    _minus
+  exit
+
+fbuffer:
+  stat   7
+  .ascii "fbuffe"
+  term   'r'
+  link   bye
+fbuffer_:
+  thread
+  cfa    _use_
+  cfa    _d_at
+  cfa    _dup
+  cfa    _b_to_r
+fbfr1:
+  cfa    plus_buf_
+  cfa    _b_zbranch
+  addr   fbfr1
+  cfa    _use_
+  cfa    _d_store
+/*
+  !!! put 'updated-buffer write' code here
+ */
+;  cfa    _drop	/* discard blk no. currently */
+  cfa    _b_r_from
+  cfa    _dup
+  cfa    _prev_
+  cfa    _d_store
+  exit
+
+block:
+  stat   5
+  .ascii "bloc"
+  term   'k'
+  link   fbuffer
+block_:
+  thread
+  cfa    _one_minus
+  cfa    _zero_
+  cfa    _max
+  cfa    _b_lit
+  val    0x400
+  cfa    _u_star
+  cfa    _fcb_buf_
+  cfa    _d_at
+  cfa    _plus
+  exit
+
+load:
+  stat  4
+  .ascii "loa"
+  term   'd'
+  link   loadstr
+load_:
+  thread
+  cfa    _blk_
+  cfa    _d_at
+  cfa    _b_to_r
+  cfa    _blk_
+  cfa    _d_store
+  cfa    _to_in_
+  cfa    _d_at
+  cfa    _b_to_r
+  cfa    _zero_
+  cfa    _to_in_
+  cfa    _d_store
+  cfa    _prev_
+  cfa    _d_at
+  cfa    _b_to_r
+  cfa    with_fcb_
+  cfa    interpret_
+  cfa    _b_r_from
+  cfa    _prev_
+  cfa    _d_store
+  cfa    _b_r_from
+  cfa    _to_in_
+  cfa    _d_store
+  cfa    _b_r_from
+  cfa    _blk_
+  cfa    _d_store
+  exit
+
+list:
+  stat  4
+  .ascii "lis"
+  term   't'
+  link   load
+list_:
+  thread
+  cfa    _dup
+  cfa    _scr_
+  cfa    _d_store
+  cfa    with_fcb_
+  cfa    _b_lit
+  val    0x10
+  cfa    _zero_
+  cfa    _b_do
+lst1:
+  cfa    cr_
+  cfa    _b_i
+  cfa    _over
+  cfa    dot_line_
+  cfa    _b_loop
+  addr   lst1
+  cfa    _drop
+  exit
+

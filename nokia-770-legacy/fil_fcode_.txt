@@ -1,0 +1,85 @@
+hex  
+: load ( ) 
+  blk d@ >r blk d! >in d@ >r 
+  0 >in d! prev d@ >r 
+  fcb_ptr d@ dup d@ prev d! >r 
+  interpret r> fcb_ptr d!
+  r> prev d! r> >in d! r> blk d!  ;
+: list ( )
+  ....  ;
+: fcb  ( ${fcbname filename.txt} -> )
+  create
+    0 d,  0FCB0 , 0 ,  0 d,  0 d,  0 d,
+    bl word  1+ dup  1- dup  c@ dup >r cmove
+    r> allot  0 c, here align dp d!
+  does>
+    fcb_ptr d!  ;
+: fcb_offs  (n ${fcb_param} -> )
+  create
+    d,
+  does>
+    d@ fcb_ptr d@ +  ;
+proc file ( mode -> )
+  err 21 if mode <> rd
+  set fcb_mode to mode
+  fopen 'fcb_name 'fcb_mode
+  err 20 if fid = 0
+  set fcb_fid to fid
+  get 1st databyte addr for next free buffer (NFB)
+  get addr of current fcb
+  set fcb ptr at NFB start to current fcb
+  set fcb_buf to 1st databyte addr for NFB
+  set fcb_len to 0
+  [ addr count -> ]
+  do get next file char 
+    while rtn <> -1
+    if char < bl 
+      set char = bl
+    endif
+    set byte at next position in buffer to char
+    increment position by 1
+    increment fcb_len by 1
+  endwhile
+  discard rtn, count, & addr
+  fclose fcb_fid
+  set fcb_fid to 0
+endproc
+: file ( mode -> )
+  dup rd c@ -  21 ?error
+  fcb_mode c!  
+  fcb_name fcb_mode fopen
+  dup 0= 20 ?error
+  fcb_fid d!
+  use d@ fcb_ptr d@ over 2- 2- d!
+  dup fcb_buf d!  0 dup fcb_len d!
+  begin  ( fil1:)
+    fcb_fid d@ fgetc 0FFFFFFFF over minus
+    while  ( zbranch fil3)
+      dup bl <
+      if  ( zbranch fil2)
+        drop bl
+      endif  ( fil2:)
+      >r over over + r>
+      swap c! 1+ fcb_len 1+!
+  repeat  ( branch fil1) ( fil3:)
+  drop 2drop
+  fcb_fid d@ fclose
+  0 fcb_fid d!  ;
+: fbuffer  ( x -> y )
+  use d@ dup >r
+  begin
+    +buf
+  until
+  use d!
+  r> dup prev d!  ;
+: block ( n -> buf_addr )
+  1- 0 max 400 u*
+  prev d@ + ;
+: where  ( -> )
+  cr ." in file: "
+  fcb_ptr d@
+  swords nfa dup 1+ swap c@ 1F and type
+  cr ."  source: " fcb_buf d@ r# d@ 1F max 
+  here c@ 1F and -  + 20 type
+  cr 9 spaces ." ^^^       "  ;
+attila
