@@ -1,0 +1,32 @@
+ ?  word not found                                            
+ stack underflow                                              
+ stack/dictionary overlap                                     
+                                                              
+ word renamed                                                 
+                                                              
+                                                              
+ dictionary approaching stack                                 
+                                                              
+                                                              
+ dividing by 0                                                
+                                                              
+                                                              
+                                                              
+                                                              
+                                                              
+                                                              
+ not in compile mode                                          
+ not in execute mode                                          
+ construct mismatch                                           
+ construct/stack mismatch                                     
+ protected by fence                                           
+ context and current differ                                   
+                                                              
+                                                              
+                                                              
+                                                              
+ argument missing                                             
+                                                              
+                                                              
+                                                              
+/s 456789 123456789 123456789 123456789 123456789 123456789 12
