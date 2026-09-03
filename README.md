@@ -1,3 +1,8 @@
-# arm-forth79-system
-An implementation of my custom Forth-79 model ported to ARM-compatible platforms, including the Nokia 770 internet tablet and the Raspberry Pi 
-arm-forth79-system
+# Attila Forth-79 Engine (ARMv6)
+
+A lightweight, indirect-threaded Forth-79 Virtual Machine for ARMv6 targets (Raspberry Pi Zero W) and QEMU.
+
+## Quick Start
+- Build: `make`
+- Run: `make run`
+- Clean: `make clean`
