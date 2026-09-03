@@ -6,7 +6,7 @@ LDFLAGS =
 QEMU    = qemu-arm
 QEMU_LIB = /usr/arm-linux-gnueabihf
 
-TARGET  = forth79
+TARGET  = attila
 C_SRCS  = attila.c
 ASM_SRCS= boot4th.s
 OBJS    = $(C_SRCS:.c=.o) $(ASM_SRCS:.s=.o)
