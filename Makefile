@@ -1,4 +1,8 @@
 # ARMv6 Forth-79 (Attila) Cross-Compilation Makefile
+# --- Deployment Configuration ---
+PI_USER ?= pi
+PI_HOST ?= raspberrypi.local
+
 CC      = arm-linux-gnueabihf-gcc
 CFLAGS  = -marm -march=armv6z+fp -mfpu=vfp -mfloat-abi=hard -O2 -Wall
 LDFLAGS = 
@@ -29,3 +33,8 @@ clean:
 	rm -f $(OBJS) $(TARGET)
 
 .PHONY: all run clean
+
+deploy: attila
+	@echo "Deploying attila to $(PI_USER)@$(PI_HOST)..."
+	scp attila $(PI_USER)@$(PI_HOST):~/
+	@echo "Deployment complete!"
